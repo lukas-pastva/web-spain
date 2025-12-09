@@ -33,6 +33,7 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
 - `DEVICE_SCALE_FACTOR` — Pixel density multiplier for sharper output (e.g., `2` for “retina”-like). Default: `1`.
 - `CLICK_IFRAME_FULLSCREEN` — When `true`, tries to click the player's fullscreen button inside the iframe (e.g., IPCamLive) before capturing. Default: `false`.
 - `CLICK_IFRAME_PLAY` — When `true`, tries to click the player's central Play button inside the iframe before capturing, then waits briefly for playback. Helps when the player shows a static poster with a big Play icon. Default: `false`.
+- `CLICK_IFRAME_PLAY_FULLSCREEN` — When `true`, performs a combined sequence: click Play, hover over the video to reveal controls, then click the player's Fullscreen button inside the iframe before capturing. Produces a full-viewport screenshot of the playing video. Default: `false`.
 - `PLAYER_FRAME_URL_MATCH` — Substring to identify the player iframe URL. Default: `ipcamlive.com`.
 - `PLAYER_FULLSCREEN_SELECTORS` — Optional comma-separated CSS selectors to find the fullscreen control inside the player iframe. Defaults include common variants like `button[aria-label*="Full"]`, `.vjs-fullscreen-control`, `.fullscreen`.
 - `PLAYER_PLAY_SELECTORS` — Optional comma-separated CSS selectors to find the Play control inside the player iframe. Defaults include common variants like `.vjs-big-play-button`, `button[aria-label*="Play"]`, `.jw-icon-playback`.
@@ -81,12 +82,13 @@ You can tune delays/selectors with `PLAY_WAIT_MS`, `WAIT_FOR_PLAYING_TIMEOUT_MS`
 
 ### On-demand captures from the web UI
 
-The home page now includes two buttons:
+The home page now includes three buttons:
 
 - `Capture now (normal)` — performs an immediate capture with the current settings
 - `Capture now (play first)` — performs an immediate capture that clicks Play first (regardless of the default)
+- `Capture now (play + fullscreen)` — clicks Play, hovers to reveal the fullscreen control, clicks it, and then captures a fullscreen screenshot
 
-These map to `GET /capture?mode=normal` and `GET /capture?mode=play` respectively.
+These map to `GET /capture?mode=normal`, `GET /capture?mode=play`, and `GET /capture?mode=playfs` respectively.
 
 If you don’t provide `CLIP_SELECTOR`, the service will automatically crop to the largest visible iframe whose URL contains `PLAYER_FRAME_URL_MATCH` (see `AUTO_CLIP_IFRAME_BY_URL`).
 

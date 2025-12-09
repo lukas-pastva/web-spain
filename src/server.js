@@ -40,6 +40,8 @@ const DEVICE_SCALE_FACTOR = parseFloat(process.env.DEVICE_SCALE_FACTOR || '1');
 const CLICK_IFRAME_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_FULLSCREEN || 'false');
 // New: try clicking the player's central Play button before capture
 const CLICK_IFRAME_PLAY = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_PLAY || 'false');
+// New: combined mode – click play, then click fullscreen (also used by capture mode)
+const CLICK_IFRAME_PLAY_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_PLAY_FULLSCREEN || 'false');
 const PLAYER_FRAME_URL_MATCH = process.env.PLAYER_FRAME_URL_MATCH || 'ipcamlive.com';
 // Comma-separated list to override default fullscreen control selectors inside the frame
 const PLAYER_FULLSCREEN_SELECTORS = (process.env.PLAYER_FULLSCREEN_SELECTORS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -224,8 +226,9 @@ async function tryHandleConsent(page) {
   }
 }
 
-async function tryClickPlayerFullscreen(page) {
-  if (!CLICK_IFRAME_FULLSCREEN) return false;
+async function tryClickPlayerFullscreen(page, opts = {}) {
+  const force = !!opts.force;
+  if (!CLICK_IFRAME_FULLSCREEN && !force) return false;
   try {
     // Find the iframe frame that likely hosts the player
     const frames = page.frames();
@@ -291,8 +294,9 @@ async function tryClickPlayerFullscreen(page) {
   return false;
 }
 
-async function tryClickPlayerPlay(page) {
-  if (!CLICK_IFRAME_PLAY) return false;
+async function tryClickPlayerPlay(page, opts = {}) {
+  const force = !!opts.force;
+  if (!CLICK_IFRAME_PLAY && !force) return false;
   try {
     const frames = page.frames();
     const playerFrame = frames.find(f => (f.url() || '').includes(PLAYER_FRAME_URL_MATCH));
@@ -363,6 +367,50 @@ async function tryClickPlayerPlay(page) {
   return false;
 }
 
+// Helper: hover over the video (prefer bottom-right) to reveal controls inside the frame
+async function hoverVideoBottomRight(playerFrame, page) {
+  try {
+    const el = await playerFrame.$('video, .vjs-tech, .jw-video, canvas, .player, [class*="player" i]');
+    if (!el) {
+      try { await playerFrame.hover('body'); } catch (_) {}
+      await sleep(200);
+      return false;
+    }
+    try { await el.evaluate(e => e.scrollIntoView({ block: 'center', inline: 'center' })); } catch (_) {}
+    const box = await el.boundingBox();
+    if (!box) { try { await playerFrame.hover('video'); } catch (_) {} await sleep(200); return false; }
+    const x = Math.floor(box.x + Math.max(0, box.width) - 4);
+    const y = Math.floor(box.y + Math.max(0, box.height) - 4);
+    try {
+      await page.mouse.move(x, y, { steps: 2 });
+    } catch (_) {
+      try { await playerFrame.hover('video'); } catch (_) {}
+    }
+    await sleep(250);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Combined: play then hover to reveal controls and click fullscreen
+async function tryClickPlayerPlayThenFullscreen(page) {
+  try {
+    const frames = page.frames();
+    const playerFrame = frames.find(f => (f.url() || '').includes(PLAYER_FRAME_URL_MATCH));
+    if (!playerFrame) return false;
+
+    // Try to start playback first
+    await tryClickPlayerPlay(page, { force: true });
+    // Hover to reveal the controls (bottom-right)
+    await hoverVideoBottomRight(playerFrame, page);
+    // Then click fullscreen inside the frame
+    const ok = await tryClickPlayerFullscreen(page, { force: true });
+    if (ok) return true;
+  } catch (_) { /* ignore */ }
+  return false;
+}
+
 async function captureOnce(options = {}) {
   if (capturing) return; // skip overlapping runs
   capturing = true;
@@ -381,13 +429,20 @@ async function captureOnce(options = {}) {
     // Attempt to accept cookie/consent banners that may obscure content
     await tryHandleConsent(page);
 
+    // Option 0: if requested, click play then hover to reveal controls and click fullscreen
+    const wantPlayThenFullscreen = options.playThenFullscreen === true || (options.playThenFullscreen === undefined && CLICK_IFRAME_PLAY_FULLSCREEN);
+    let combinedFullscreen = false;
+    if (wantPlayThenFullscreen) {
+      try { combinedFullscreen = await tryClickPlayerPlayThenFullscreen(page); } catch (_) { /* ignore */ }
+    }
+
     // Option 1: try clicking the player's own fullscreen button inside the iframe
-    let playerFullscreen = await tryClickPlayerFullscreen(page);
+    let playerFullscreen = combinedFullscreen || await tryClickPlayerFullscreen(page);
 
     // Option 1b: optionally click the player's central Play control before capture
     let playerPlayClicked = false;
     try {
-      const wantPlay = options.playThenCapture === true || (options.playThenCapture === undefined && CLICK_IFRAME_PLAY);
+      const wantPlay = !combinedFullscreen && (options.playThenCapture === true || (options.playThenCapture === undefined && CLICK_IFRAME_PLAY));
       if (wantPlay) {
         playerPlayClicked = await tryClickPlayerPlay(page);
       }
@@ -626,6 +681,7 @@ app.get('/', (req, res) => {
         <a class="button" href="/healthz" target="_blank">Health</a>
         <a class="button" href="/capture?mode=normal">Capture now (normal)</a>
         <a class="button" href="/capture?mode=play">Capture now (play first)</a>
+        <a class="button" href="/capture?mode=playfs">Capture now (play + fullscreen)</a>
       </div>
     </header>
     ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
@@ -642,8 +698,9 @@ app.get('/capture', async (req, res) => {
   }
   const mode = String(req.query.mode || '').toLowerCase();
   const playThenCapture = mode === 'play' || mode === 'playfirst' || mode === 'play-first';
+  const playThenFullscreen = mode === 'playfs' || mode === 'play-fullscreen' || mode === 'playfs-first';
   try {
-    const file = await captureOnce({ playThenCapture });
+    const file = await captureOnce({ playThenCapture, playThenFullscreen });
     if (!file) return res.status(500).send('Capture failed');
     // Redirect back to home where the latest screenshot is shown
     res.redirect(303, '/');
