@@ -26,6 +26,10 @@ let puppeteer; // assigned on first capture
 let browser;    // reused across captures
 let capturing = false;
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function ensureBrowser() {
   if (!puppeteer) {
     puppeteer = require('puppeteer');
@@ -70,7 +74,7 @@ async function captureOnce() {
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
     await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60_000 });
     if (POST_NAV_WAIT_MS > 0) {
-      await page.waitForTimeout(POST_NAV_WAIT_MS);
+      await sleep(POST_NAV_WAIT_MS);
     }
 
     const ts = nowIsoNoColons();
