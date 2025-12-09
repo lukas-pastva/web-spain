@@ -46,9 +46,13 @@ spec:
             - name: CLIP_SELECTOR
               value: "iframe[src*=\"ipcamlive.com\"]"
             - name: MAKE_CLIP_FULLSCREEN
-              value: "true"
+              value: "false"
             - name: AUTO_CONSENT
               value: "true"
+            - name: CLICK_IFRAME_FULLSCREEN
+              value: "true"
+            - name: PLAYER_FRAME_URL_MATCH
+              value: "ipcamlive.com"
             - name: CAPTURE_INTERVAL_MS
               value: "60000" # 60s
             - name: OUTPUT_DIR

@@ -15,9 +15,9 @@ const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
 // Example: CLIP_SELECTOR='iframe[src*="ipcamlive.com"]'
 const CLIP_SELECTOR = process.env.CLIP_SELECTOR || '';
 // Optionally, promote a selector to fullscreen before capture. If FULLSCREEN_SELECTOR is not set,
-// the CLIP_SELECTOR will be used. Enabled by default to better match "capture the video on fullscreen".
+// the CLIP_SELECTOR will be used. Disabled by default to align with "capture only the video area".
 const FULLSCREEN_SELECTOR = process.env.FULLSCREEN_SELECTOR || '';
-const MAKE_CLIP_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.MAKE_CLIP_FULLSCREEN || 'true');
+const MAKE_CLIP_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.MAKE_CLIP_FULLSCREEN || 'false');
 const FULLSCREEN_BG = process.env.FULLSCREEN_BG || '#000';
 const FULLSCREEN_DELAY_MS = parseInt(process.env.FULLSCREEN_DELAY_MS || '400', 10);
 // Handle consent/cookie banners automatically so capture isn't blocked
@@ -35,6 +35,14 @@ const JITTER_MS = parseInt(process.env.JITTER_MS || '30000', 10); // ±30s by de
 const VIEWPORT_WIDTH = parseInt(process.env.VIEWPORT_WIDTH || '1920', 10);
 const VIEWPORT_HEIGHT = parseInt(process.env.VIEWPORT_HEIGHT || '1080', 10);
 const DEVICE_SCALE_FACTOR = parseFloat(process.env.DEVICE_SCALE_FACTOR || '1');
+
+// Optionally click the player's own fullscreen control inside the iframe
+const CLICK_IFRAME_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_FULLSCREEN || 'false');
+const PLAYER_FRAME_URL_MATCH = process.env.PLAYER_FRAME_URL_MATCH || 'ipcamlive.com';
+// Comma-separated list to override default fullscreen control selectors inside the frame
+const PLAYER_FULLSCREEN_SELECTORS = (process.env.PLAYER_FULLSCREEN_SELECTORS || '').split(',').map(s => s.trim()).filter(Boolean);
+// If CLIP_SELECTOR isn't provided, attempt to auto-clip the visible iframe matching PLAYER_FRAME_URL_MATCH
+const AUTO_CLIP_IFRAME_BY_URL = /^(1|true|yes|on)$/i.test(process.env.AUTO_CLIP_IFRAME_BY_URL || 'true');
 
 // Ensure output directory exists
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -208,6 +216,73 @@ async function tryHandleConsent(page) {
   }
 }
 
+async function tryClickPlayerFullscreen(page) {
+  if (!CLICK_IFRAME_FULLSCREEN) return false;
+  try {
+    // Find the iframe frame that likely hosts the player
+    const frames = page.frames();
+    const playerFrame = frames.find(f => (f.url() || '').includes(PLAYER_FRAME_URL_MATCH));
+    if (!playerFrame) return false;
+
+    // Try to generate a user gesture inside the frame (some players require a gesture for fullscreen)
+    try { await playerFrame.click('body', { delay: 10 }); } catch (_) {}
+
+    const selectors = PLAYER_FULLSCREEN_SELECTORS.length ? PLAYER_FULLSCREEN_SELECTORS : [
+      // Common HTML attributes/text
+      'button[aria-label*="Full" i]',
+      'button[title*="Full" i]',
+      'button[aria-label*="pantalla" i]',
+      'button[title*="pantalla" i]',
+      // Popular player classes
+      '.vjs-fullscreen-control',
+      '.jw-icon-fullscreen',
+      // Generic fallbacks
+      'button[class*="full" i]',
+      '[class*="fullscreen" i]',
+      'a[title*="full" i]',
+    ];
+
+    for (const sel of selectors) {
+      try {
+        const el = await playerFrame.$(sel);
+        if (!el) continue;
+        await el.click({ delay: 10 });
+        // brief wait for layout
+        await sleep(Math.max(150, FULLSCREEN_DELAY_MS));
+        // Heuristic: if the document has a fullscreen element or body is styled fullscreen-ish
+        const wentFs = await playerFrame.evaluate(() => {
+          if (document.fullscreenElement) return true;
+          // Many players toggle a fullscreen class on body or root
+          const cls = (document.body && document.body.className) || '';
+          return /full\s?screen|vjs-fullscreen/i.test(cls);
+        }).catch(() => true); // cross-origin heuristics may fail; assume success after click
+        if (wentFs) return true;
+      } catch (_) {
+        // try next selector
+      }
+    }
+
+    // As a last resort, attempt programmatic fullscreen on a likely media element.
+    try {
+      const ok = await playerFrame.evaluate(async () => {
+        const el = document.querySelector('video, canvas, .player, #player, [class*="player"]');
+        const target = el || document.documentElement;
+        if (target && target.requestFullscreen) {
+          try { await target.requestFullscreen(); return true; } catch (_) { /* ignored */ }
+        }
+        return false;
+      });
+      if (ok) {
+        await sleep(Math.max(150, FULLSCREEN_DELAY_MS));
+        return true;
+      }
+    } catch (_) { /* ignore */ }
+  } catch (_) {
+    // ignore
+  }
+  return false;
+}
+
 async function captureOnce() {
   if (capturing) return; // skip overlapping runs
   capturing = true;
@@ -226,54 +301,57 @@ async function captureOnce() {
     // Attempt to accept cookie/consent banners that may obscure content
     await tryHandleConsent(page);
 
-    // Try to promote the target element (webcam iframe) to fullscreen to capture only the video
-    // at a full-viewport resolution. This is especially useful when the page constrains the
-    // iframe to a smaller box.
-    let fullscreenApplied = false;
-    const fullscreenTargetSelector = (FULLSCREEN_SELECTOR || CLIP_SELECTOR || '').trim();
-    if (fullscreenTargetSelector && MAKE_CLIP_FULLSCREEN) {
-      try {
-        await page.waitForSelector(fullscreenTargetSelector, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS, visible: true });
-        fullscreenApplied = await page.evaluate((sel, bg) => {
-          const el = document.querySelector(sel);
-          if (!el) return false;
-          // Hide everything except the element and its ancestor chain
-          const ancestors = new Set();
-          let n = el;
-          while (n) { ancestors.add(n); n = n.parentElement; }
-          const body = document.body;
-          for (const child of Array.from(body.children)) {
-            if (!ancestors.has(child)) {
-              child.style.setProperty('display', 'none', 'important');
-              child.style.setProperty('visibility', 'hidden', 'important');
-            }
-          }
-          document.documentElement.style.setProperty('overflow', 'hidden', 'important');
-          body.style.setProperty('margin', '0', 'important');
-          body.style.setProperty('padding', '0', 'important');
+    // Option 1: try clicking the player's own fullscreen button inside the iframe
+    let playerFullscreen = await tryClickPlayerFullscreen(page);
 
-          // Make the element itself fixed and cover the viewport
-          const s = el.style;
-          s.setProperty('position', 'fixed', 'important');
-          s.setProperty('top', '0', 'important');
-          s.setProperty('left', '0', 'important');
-          s.setProperty('width', '100vw', 'important');
-          s.setProperty('height', '100vh', 'important');
-          s.setProperty('max-width', '100vw', 'important');
-          s.setProperty('max-height', '100vh', 'important');
-          s.setProperty('margin', '0', 'important');
-          s.setProperty('padding', '0', 'important');
-          s.setProperty('transform', 'none', 'important');
-          s.setProperty('z-index', '2147483647', 'important');
-          s.setProperty('background', bg || '#000', 'important');
-          return true;
-        }, fullscreenTargetSelector, FULLSCREEN_BG);
-        if (fullscreenApplied && FULLSCREEN_DELAY_MS > 0) {
-          await sleep(FULLSCREEN_DELAY_MS);
+    // Option 2: as a fallback, promote the target element (webcam iframe) to fullscreen via CSS
+    let fullscreenApplied = false;
+    if (!playerFullscreen) {
+      const fullscreenTargetSelector = (FULLSCREEN_SELECTOR || CLIP_SELECTOR || '').trim();
+      if (fullscreenTargetSelector && MAKE_CLIP_FULLSCREEN) {
+        try {
+          await page.waitForSelector(fullscreenTargetSelector, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS, visible: true });
+          fullscreenApplied = await page.evaluate((sel, bg) => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            // Hide everything except the element and its ancestor chain
+            const ancestors = new Set();
+            let n = el;
+            while (n) { ancestors.add(n); n = n.parentElement; }
+            const body = document.body;
+            for (const child of Array.from(body.children)) {
+              if (!ancestors.has(child)) {
+                child.style.setProperty('display', 'none', 'important');
+                child.style.setProperty('visibility', 'hidden', 'important');
+              }
+            }
+            document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+            body.style.setProperty('margin', '0', 'important');
+            body.style.setProperty('padding', '0', 'important');
+
+            // Make the element itself fixed and cover the viewport
+            const s = el.style;
+            s.setProperty('position', 'fixed', 'important');
+            s.setProperty('top', '0', 'important');
+            s.setProperty('left', '0', 'important');
+            s.setProperty('width', '100vw', 'important');
+            s.setProperty('height', '100vh', 'important');
+            s.setProperty('max-width', '100vw', 'important');
+            s.setProperty('max-height', '100vh', 'important');
+            s.setProperty('margin', '0', 'important');
+            s.setProperty('padding', '0', 'important');
+            s.setProperty('transform', 'none', 'important');
+            s.setProperty('z-index', '2147483647', 'important');
+            s.setProperty('background', bg || '#000', 'important');
+            return true;
+          }, fullscreenTargetSelector, FULLSCREEN_BG);
+          if (fullscreenApplied && FULLSCREEN_DELAY_MS > 0) {
+            await sleep(FULLSCREEN_DELAY_MS);
+          }
+        } catch (e) {
+          // If fullscreen attempt fails, continue with normal clipping logic
+          fullscreenApplied = false;
         }
-      } catch (e) {
-        // If fullscreen attempt fails, continue with normal clipping logic
-        fullscreenApplied = false;
       }
     }
 
@@ -313,10 +391,47 @@ async function captureOnce() {
       }
     }
 
-    if (fullscreenApplied) {
+    if (playerFullscreen || fullscreenApplied) {
       await page.screenshot(shotOptions);
     } else if (!clipped) {
-      await page.screenshot(shotOptions);
+      // Optional auto-clip: if CLIP_SELECTOR not provided, crop to the visible iframe that matches PLAYER_FRAME_URL_MATCH
+      let autoClipped = false;
+      if (AUTO_CLIP_IFRAME_BY_URL && (!CLIP_SELECTOR || CLIP_SELECTOR.trim() === '')) {
+        try {
+          const rect = await page.evaluate((match, pad) => {
+            const iframes = Array.from(document.querySelectorAll('iframe'));
+            const cand = iframes
+              .map(iframe => {
+                const src = iframe.getAttribute('src') || '';
+                if (!src.includes(match)) return null;
+                const r = iframe.getBoundingClientRect();
+                const visible = r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0;
+                if (!visible) return null;
+                return { x: r.left + window.scrollX, y: r.top + window.scrollY, width: r.width, height: r.height };
+              })
+              .filter(Boolean)
+              .sort((a, b) => (b.width * b.height) - (a.width * a.height));
+            if (!cand.length) return null;
+            const r = cand[0];
+            return {
+              x: Math.max(0, Math.floor(r.x - pad)),
+              y: Math.max(0, Math.floor(r.y - pad)),
+              width: Math.ceil(r.width + pad * 2),
+              height: Math.ceil(r.height + pad * 2),
+            };
+          }, PLAYER_FRAME_URL_MATCH, CLIP_PADDING);
+          if (rect) {
+            await page.screenshot({ ...shotOptions, clip: rect });
+            autoClipped = true;
+          }
+        } catch (e) {
+          console.warn(`[capture] AUTO_CLIP_IFRAME_BY_URL failed: ${e && e.message ? e.message : e}`);
+        }
+      }
+
+      if (!autoClipped) {
+        await page.screenshot(shotOptions);
+      }
     }
     await page.close();
 

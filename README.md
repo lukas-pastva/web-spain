@@ -24,32 +24,47 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
  - `NAV_WAIT_UNTIL` — How Puppeteer waits for navigation to finish: `load`, `domcontentloaded` (default), `networkidle0`, or `networkidle2`. For streaming pages, `domcontentloaded` is recommended.
  - `AUTO_CONSENT` — When `true` (default), attempts to auto-accept common cookie/consent banners (Google Funding Choices, site cookie bars) so the webcam isn't obscured. Timeout controlled by `CONSENT_TIMEOUT_MS`.
  - `CONSENT_TIMEOUT_MS` — How long to keep trying to handle consent banners. Default: `8000`.
- - `MAKE_CLIP_FULLSCREEN` — When `true` (default), promotes the selected element to fullscreen before capturing. Produces a full-viewport image of the video instead of a smaller cropped box.
+ - `MAKE_CLIP_FULLSCREEN` — When `true`, promotes the selected element to fullscreen before capturing. Produces a full-viewport image of the video instead of a smaller cropped box. Default: `false`.
  - `FULLSCREEN_SELECTOR` — Optional selector to use for fullscreen promotion. If not set, `CLIP_SELECTOR` is used.
  - `FULLSCREEN_BG` — Background color to use behind the fullscreened element. Default: `#000`.
  - `FULLSCREEN_DELAY_MS` — Small delay after fullscreening to allow layout to settle. Default: `400`.
  - `VIEWPORT_WIDTH` — Browser viewport width in pixels. Default: `1920`.
  - `VIEWPORT_HEIGHT` — Browser viewport height in pixels. Default: `1080`.
- - `DEVICE_SCALE_FACTOR` — Pixel density multiplier for sharper output (e.g., `2` for “retina”-like). Default: `1`.
+- `DEVICE_SCALE_FACTOR` — Pixel density multiplier for sharper output (e.g., `2` for “retina”-like). Default: `1`.
+ - `CLICK_IFRAME_FULLSCREEN` — When `true`, tries to click the player's fullscreen button inside the iframe (e.g., IPCamLive) before capturing. Default: `false`.
+ - `PLAYER_FRAME_URL_MATCH` — Substring to identify the player iframe URL. Default: `ipcamlive.com`.
+ - `PLAYER_FULLSCREEN_SELECTORS` — Optional comma-separated CSS selectors to find the fullscreen control inside the player iframe. Defaults include common variants like `button[aria-label*="Full"]`, `.vjs-fullscreen-control`, `.fullscreen`.
+ - `AUTO_CLIP_IFRAME_BY_URL` — When `true` (default), if no `CLIP_SELECTOR` is provided the service auto-detects the largest visible `<iframe>` whose `src` includes `PLAYER_FRAME_URL_MATCH` and crops to it.
 
-### Capture only the video (iframe) region (fullscreen)
+### Capture only the video (iframe) region
 
-If your target page embeds the webcam inside an `<iframe>` (like IPCamLive), you can tell the service to capture only that element. By default, the service will also promote that element to fullscreen so the capture is a full-viewport image of the video:
+If your target page embeds the webcam inside an `<iframe>` (like IPCamLive), you can tell the service to capture only that element. By default the service captures the element at its embedded size. You can also promote it to fullscreen if desired.
 
 ```
 docker run --rm \
   -e TARGET_URL=https://www.algarapictures.com/webcam \
   -e CLIP_SELECTOR='iframe[src*="ipcamlive.com"]' \
-  -e MAKE_CLIP_FULLSCREEN=true \
+  -e MAKE_CLIP_FULLSCREEN=false \
   -e CLIP_PADDING=8 \
   -p 8080:8080 \
   -v "$(pwd)/images:/tmp/images" \
   webcam-snapshot:local
 ```
 
-The service waits for the element to be visible, promotes it to fullscreen, and captures the viewport. If you prefer to keep the original embedded size, set `-e MAKE_CLIP_FULLSCREEN=false` and it will screenshot only that element’s box. If the selector doesn’t appear within the timeout, it falls back to a regular screenshot of the page.
+The service waits for the element to be visible and screenshots only that element’s box. If you prefer a full-viewport image of the video, set `-e MAKE_CLIP_FULLSCREEN=true` and the element will be promoted to fullscreen before capture. If the selector doesn’t appear within the timeout, it falls back to a regular screenshot of the page.
 
 If you see a cookie/consent dialog, the service will try to automatically accept common consent prompts (Google Funding Choices) in both the page and any iframes. You can also persist the decision by using a Chromium profile via `USER_DATA_DIR` (see below).
+
+To make the embedded player itself go fullscreen (instead of CSS-promoting the iframe), enable:
+
+```
+-e CLICK_IFRAME_FULLSCREEN=true \
+-e PLAYER_FRAME_URL_MATCH=ipcamlive.com
+```
+
+The service tries several common selectors for the fullscreen control, attempts to generate a user gesture inside the player, and (as a last resort) requests fullscreen on a likely media element.
+
+If you don’t provide `CLIP_SELECTOR`, the service will automatically crop to the largest visible iframe whose URL contains `PLAYER_FRAME_URL_MATCH` (see `AUTO_CLIP_IFRAME_BY_URL`).
 
 ### Persist consent/cookies (optional)
 
