@@ -17,20 +17,10 @@ const FULL_VIDEO_PATH = path.join(VIDEOS_DIR, FULL_VIDEO_NAME);
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
 
-// Optional: capture only a specific element (e.g., the webcam iframe)
-// Example: CLIP_SELECTOR='iframe[src*="ipcamlive.com"]'
-const CLIP_SELECTOR = process.env.CLIP_SELECTOR || '';
-// Optionally, promote a selector to fullscreen before capture. If FULLSCREEN_SELECTOR is not set,
-// the CLIP_SELECTOR will be used. Disabled by default to align with "capture only the video area".
-const FULLSCREEN_SELECTOR = process.env.FULLSCREEN_SELECTOR || '';
-const MAKE_CLIP_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.MAKE_CLIP_FULLSCREEN || 'false');
-const FULLSCREEN_BG = process.env.FULLSCREEN_BG || '#000';
 const FULLSCREEN_DELAY_MS = parseInt(process.env.FULLSCREEN_DELAY_MS || '400', 10);
 // Handle consent/cookie banners automatically so capture isn't blocked
 const AUTO_CONSENT = /^(1|true|yes|on)$/i.test(process.env.AUTO_CONSENT || 'true');
 const CONSENT_TIMEOUT_MS = parseInt(process.env.CONSENT_TIMEOUT_MS || '8000', 10);
-const CLIP_PADDING = parseInt(process.env.CLIP_PADDING || '0', 10); // px around the element
-const WAIT_FOR_SELECTOR_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_SELECTOR_TIMEOUT_MS || '30000', 10);
 const POST_NAV_WAIT_MS = parseInt(process.env.POST_NAV_WAIT_MS || '1500', 10); // small delay to allow paint
 // Some streaming pages never reach network idle; allow configuring the goto waitUntil.
 const NAV_WAIT_UNTIL = (process.env.NAV_WAIT_UNTIL || 'domcontentloaded'); // 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'
@@ -42,12 +32,12 @@ const VIEWPORT_WIDTH = parseInt(process.env.VIEWPORT_WIDTH || '1920', 10);
 const VIEWPORT_HEIGHT = parseInt(process.env.VIEWPORT_HEIGHT || '1080', 10);
 const DEVICE_SCALE_FACTOR = parseFloat(process.env.DEVICE_SCALE_FACTOR || '1');
 
-// Optionally click the player's own fullscreen control inside the iframe
-const CLICK_IFRAME_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_FULLSCREEN || 'false');
-// New: try clicking the player's central Play button before capture
-const CLICK_IFRAME_PLAY = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_PLAY || 'false');
-// New: combined mode – click play, then click fullscreen (also used by capture mode)
-const CLICK_IFRAME_PLAY_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_PLAY_FULLSCREEN || 'false');
+// Optionally click the player's own fullscreen control inside the iframe (always attempted internally)
+const CLICK_IFRAME_FULLSCREEN = false;
+// Try clicking the player's central Play button before capture (always attempted internally)
+const CLICK_IFRAME_PLAY = false;
+// Combined mode flag no longer used (we always attempt play + fullscreen)
+const CLICK_IFRAME_PLAY_FULLSCREEN = true;
 const PLAYER_FRAME_URL_MATCH = process.env.PLAYER_FRAME_URL_MATCH || 'ipcamlive.com';
 // Comma-separated list to override default fullscreen control selectors inside the frame
 const PLAYER_FULLSCREEN_SELECTORS = (process.env.PLAYER_FULLSCREEN_SELECTORS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -57,8 +47,7 @@ const PLAYER_PLAY_SELECTORS = (process.env.PLAYER_PLAY_SELECTORS || '').split(',
 const PLAY_WAIT_MS = parseInt(process.env.PLAY_WAIT_MS || '1200', 10);
 // How long to wait for a <video> element to start playing (polling timeout, ms)
 const WAIT_FOR_PLAYING_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_PLAYING_TIMEOUT_MS || '4000', 10);
-// If CLIP_SELECTOR isn't provided, attempt to auto-clip the visible iframe matching PLAYER_FRAME_URL_MATCH
-const AUTO_CLIP_IFRAME_BY_URL = /^(1|true|yes|on)$/i.test(process.env.AUTO_CLIP_IFRAME_BY_URL || 'true');
+// Auto-clip removed; capture is fullscreen-first
 
 // Ensure output directories exist
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -587,75 +576,10 @@ async function captureOnce(options = {}) {
     // Attempt to accept cookie/consent banners that may obscure content
     await tryHandleConsent(page);
 
-    // Option 0: if requested, click play then hover to reveal controls and click fullscreen
-    const wantPlayThenFullscreen = options.playThenFullscreen === true || (options.playThenFullscreen === undefined && CLICK_IFRAME_PLAY_FULLSCREEN);
-    let combinedFullscreen = false;
-    if (wantPlayThenFullscreen) {
-      try { combinedFullscreen = await tryClickPlayerPlayThenFullscreen(page); } catch (_) { /* ignore */ }
-    }
-
-    // Option 1: try clicking the player's own fullscreen button inside the iframe
-    let playerFullscreen = combinedFullscreen || await tryClickPlayerFullscreen(page);
-
-    // Option 1b: optionally click the player's central Play control before capture
-    let playerPlayClicked = false;
-    try {
-      const wantPlay = !combinedFullscreen && (options.playThenCapture === true || (options.playThenCapture === undefined && CLICK_IFRAME_PLAY));
-      if (wantPlay) {
-        playerPlayClicked = await tryClickPlayerPlay(page);
-      }
-    } catch (_) { /* ignore */ }
-
-    // Option 2: as a fallback, promote the target element (webcam iframe) to fullscreen via CSS
-    let fullscreenApplied = false;
-    if (!playerFullscreen) {
-      const fullscreenTargetSelector = (FULLSCREEN_SELECTOR || CLIP_SELECTOR || '').trim();
-      if (fullscreenTargetSelector && MAKE_CLIP_FULLSCREEN) {
-        try {
-          await page.waitForSelector(fullscreenTargetSelector, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS, visible: true });
-          fullscreenApplied = await page.evaluate((sel, bg) => {
-            const el = document.querySelector(sel);
-            if (!el) return false;
-            // Hide everything except the element and its ancestor chain
-            const ancestors = new Set();
-            let n = el;
-            while (n) { ancestors.add(n); n = n.parentElement; }
-            const body = document.body;
-            for (const child of Array.from(body.children)) {
-              if (!ancestors.has(child)) {
-                child.style.setProperty('display', 'none', 'important');
-                child.style.setProperty('visibility', 'hidden', 'important');
-              }
-            }
-            document.documentElement.style.setProperty('overflow', 'hidden', 'important');
-            body.style.setProperty('margin', '0', 'important');
-            body.style.setProperty('padding', '0', 'important');
-
-            // Make the element itself fixed and cover the viewport
-            const s = el.style;
-            s.setProperty('position', 'fixed', 'important');
-            s.setProperty('top', '0', 'important');
-            s.setProperty('left', '0', 'important');
-            s.setProperty('width', '100vw', 'important');
-            s.setProperty('height', '100vh', 'important');
-            s.setProperty('max-width', '100vw', 'important');
-            s.setProperty('max-height', '100vh', 'important');
-            s.setProperty('margin', '0', 'important');
-            s.setProperty('padding', '0', 'important');
-            s.setProperty('transform', 'none', 'important');
-            s.setProperty('z-index', '2147483647', 'important');
-            s.setProperty('background', bg || '#000', 'important');
-            return true;
-          }, fullscreenTargetSelector, FULLSCREEN_BG);
-          if (fullscreenApplied && FULLSCREEN_DELAY_MS > 0) {
-            await sleep(FULLSCREEN_DELAY_MS);
-          }
-        } catch (e) {
-          // If fullscreen attempt fails, continue with normal clipping logic
-          fullscreenApplied = false;
-        }
-      }
-    }
+    // Always attempt to start playback and enter fullscreen inside the player iframe
+    try { await tryClickPlayerPlayThenFullscreen(page); } catch (_) { /* ignore */ }
+    // Ensure fullscreen attempt was made even if play wasn’t required
+    try { await tryClickPlayerFullscreen(page, { force: true }); } catch (_) { /* ignore */ }
 
     const ts = nowIsoNoColons();
     const fileBase = `webcam-${ts}`;
@@ -665,76 +589,8 @@ async function captureOnce(options = {}) {
       ? { path: filePath, type: 'png' }
       : { path: filePath, type: 'jpeg', quality: Math.max(0, Math.min(100, JPEG_QUALITY)) };
 
-    let clipped = false;
-    if (!fullscreenApplied && CLIP_SELECTOR) {
-      try {
-        await page.waitForSelector(CLIP_SELECTOR, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS, visible: true });
-        const el = await page.$(CLIP_SELECTOR);
-        if (!el) throw new Error('element not found after waitForSelector');
-
-        if (CLIP_PADDING > 0) {
-          // Ensure element is in view before measuring
-          try { await el.evaluate(e => e.scrollIntoView({ block: 'center', inline: 'center' })); } catch (_) {}
-          const box = await el.boundingBox();
-          if (!box) throw new Error('no bounding box for element');
-          const clip = {
-            x: Math.max(0, Math.floor(box.x - CLIP_PADDING)),
-            y: Math.max(0, Math.floor(box.y - CLIP_PADDING)),
-            width: Math.ceil(box.width + CLIP_PADDING * 2),
-            height: Math.ceil(box.height + CLIP_PADDING * 2),
-          };
-          await page.screenshot({ ...shotOptions, clip });
-        } else {
-          await el.screenshot(shotOptions);
-        }
-        clipped = true;
-      } catch (e) {
-        console.warn(`[capture] CLIP_SELECTOR failed: ${e && e.message ? e.message : e}. Falling back to full-page viewport screenshot.`);
-      }
-    }
-
-    if (playerFullscreen || fullscreenApplied) {
-      await page.screenshot(shotOptions);
-    } else if (!clipped) {
-      // Optional auto-clip: if CLIP_SELECTOR not provided, crop to the visible iframe that matches PLAYER_FRAME_URL_MATCH
-      let autoClipped = false;
-      if (AUTO_CLIP_IFRAME_BY_URL && (!CLIP_SELECTOR || CLIP_SELECTOR.trim() === '')) {
-        try {
-          const rect = await page.evaluate((match, pad) => {
-            const iframes = Array.from(document.querySelectorAll('iframe'));
-            const cand = iframes
-              .map(iframe => {
-                const src = iframe.getAttribute('src') || '';
-                if (!src.includes(match)) return null;
-                const r = iframe.getBoundingClientRect();
-                const visible = r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0;
-                if (!visible) return null;
-                return { x: r.left + window.scrollX, y: r.top + window.scrollY, width: r.width, height: r.height };
-              })
-              .filter(Boolean)
-              .sort((a, b) => (b.width * b.height) - (a.width * a.height));
-            if (!cand.length) return null;
-            const r = cand[0];
-            return {
-              x: Math.max(0, Math.floor(r.x - pad)),
-              y: Math.max(0, Math.floor(r.y - pad)),
-              width: Math.ceil(r.width + pad * 2),
-              height: Math.ceil(r.height + pad * 2),
-            };
-          }, PLAYER_FRAME_URL_MATCH, CLIP_PADDING);
-          if (rect) {
-            await page.screenshot({ ...shotOptions, clip: rect });
-            autoClipped = true;
-          }
-        } catch (e) {
-          console.warn(`[capture] AUTO_CLIP_IFRAME_BY_URL failed: ${e && e.message ? e.message : e}`);
-        }
-      }
-
-      if (!autoClipped) {
-        await page.screenshot(shotOptions);
-      }
-    }
+    // Always capture the current viewport (fullscreen if the player handled it)
+    await page.screenshot(shotOptions);
     await page.close();
 
     console.log(`[capture] Saved ${filePath}`);
