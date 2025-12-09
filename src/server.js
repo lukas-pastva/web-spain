@@ -908,10 +908,6 @@ app.get('/', (req, res) => {
         <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
       </div>
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
-      <div class="meta">Interval: <code>${CAPTURE_INTERVAL_MS} ms</code> • Output: <code>${OUTPUT_DIR}</code></div>
-      <div class="grid">
-        <a class="button" href="/healthz" target="_blank">Health</a>
-      </div>
     </header>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
