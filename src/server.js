@@ -662,18 +662,83 @@ app.get('/', (req, res) => {
     <title>Webcam Snapshot Service</title>
     <meta http-equiv="refresh" content="30" />
     <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #111111;
+        --muted: #666666;
+        --border: #dddddd;
+        --button-bg: #ffffff;
+        --button-fg: #333333;
+        --button-border: #cccccc;
+        --code-bg: #f6f8fa;
+      }
+      [data-theme="dark"] {
+        --bg: #0f1115;
+        --fg: #e6e6e6;
+        --muted: #a0a0a0;
+        --border: #2a2f3a;
+        --button-bg: #171a21;
+        --button-fg: #e6e6e6;
+        --button-border: #2a2f3a;
+        --code-bg: #111827;
+      }
+      html, body { background: var(--bg); color: var(--fg); }
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
       header { margin-bottom: 16px; }
-      img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }
-      .meta { color: #666; font-size: 0.9em; margin: 8px 0; }
+      header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      img { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 4px; }
+      .meta { color: var(--muted); font-size: 0.9em; margin: 8px 0; }
       .grid { display: grid; gap: 16px; }
-      a.button { display: inline-block; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; }
-      code { background: #f6f8fa; padding: 2px 4px; border-radius: 4px; }
+      a.button { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); border-radius: 4px; text-decoration: none; color: var(--button-fg); background: var(--button-bg); }
+      a.button:hover { filter: brightness(0.98); }
+      code { background: var(--code-bg); color: var(--fg); padding: 2px 4px; border-radius: 4px; }
+      /* Icon-only theme button */
+      .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
+      .icon-btn:hover { filter: brightness(0.98); }
+      .icon-btn:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
     </style>
+    <script>
+      (function() {
+        var KEY = 'theme-preference';
+        var mql = window.matchMedia('(prefers-color-scheme: dark)');
+        function getStored() {
+          try { return localStorage.getItem(KEY) || 'auto'; } catch (_) { return 'auto'; }
+        }
+        function applyTheme(mode) {
+          var effective = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode;
+          document.documentElement.setAttribute('data-theme', effective);
+        }
+        var mode = getStored();
+        applyTheme(mode);
+        function iconFor(m) { return m === 'light' ? '☀️' : (m === 'dark' ? '🌙' : '🖥️'); }
+        function titleFor(m) { return 'Theme: ' + (m.charAt(0).toUpperCase() + m.slice(1)); }
+        function updateUi() {
+          var btn = document.getElementById('theme-btn');
+          var ico = document.getElementById('theme-icon');
+          if (btn) btn.setAttribute('title', titleFor(mode));
+          if (ico) ico.textContent = iconFor(mode);
+        }
+        window.__cycleTheme = function() {
+          mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto');
+          try { localStorage.setItem(KEY, mode); } catch (_) {}
+          applyTheme(mode);
+          updateUi();
+        };
+        if (mql && mql.addEventListener) {
+          mql.addEventListener('change', function() { if (mode === 'auto') applyTheme(mode); });
+        } else if (mql && mql.addListener) {
+          mql.addListener(function() { if (mode === 'auto') applyTheme(mode); });
+        }
+        window.addEventListener('DOMContentLoaded', updateUi);
+      })();
+    </script>
   </head>
   <body>
     <header>
-      <h1>Webcam Snapshot Service</h1>
+      <div class="header-row">
+        <h1>Webcam Snapshot Service</h1>
+        <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
+      </div>
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
       <div class="meta">Interval: <code>${CAPTURE_INTERVAL_MS} ms</code> • Output: <code>${OUTPUT_DIR}</code></div>
       <div class="grid">
