@@ -635,6 +635,19 @@ function getLatestImagePath() {
   }
 }
 
+// List stored images (newest first). Optional limit
+function getImagesSorted(limit) {
+  try {
+    const files = fs.readdirSync(OUTPUT_DIR)
+      .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png'))
+      .map(name => ({ name, full: path.join(OUTPUT_DIR, name), stat: fs.statSync(path.join(OUTPUT_DIR, name)) }))
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+    return typeof limit === 'number' ? files.slice(0, Math.max(0, limit)) : files;
+  } catch (e) {
+    return [];
+  }
+}
+
 // Kick off an immediate first capture shortly after start, then schedule with jitter
 setTimeout(() => runCaptureThenSchedule(), 5000);
 
@@ -654,6 +667,12 @@ app.use('/images', express.static(OUTPUT_DIR, { maxAge: '60s', index: false }));
 app.get('/', (req, res) => {
   const latest = getLatestImagePath();
   const latestUrl = latest ? `/images/${encodeURIComponent(latest)}` : null;
+  const all = getImagesSorted(100);
+  const thumbsHtml = all.map(f => {
+    const url = `/images/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
+    const caption = new Date(f.stat.mtimeMs).toLocaleString();
+    return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${f.name}" loading="lazy" /><div class="caption">${caption}</div></a>`;
+  }).join('');
   const body = `<!doctype html>
 <html lang="en">
   <head>
@@ -689,6 +708,12 @@ app.get('/', (req, res) => {
       img { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 4px; }
       .meta { color: var(--muted); font-size: 0.9em; margin: 8px 0; }
       .grid { display: grid; gap: 16px; }
+      .rows { display: grid; gap: 24px; }
+      .row h2 { margin: 0 0 8px; font-size: 1.15em; color: var(--fg); }
+      .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+      .thumbs a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
+      .thumbs img { width: 100%; height: 120px; object-fit: cover; display: block; background: #000; }
+      .thumbs .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       a.button { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); border-radius: 4px; text-decoration: none; color: var(--button-fg); background: var(--button-bg); }
       a.button:hover { filter: brightness(0.98); }
       code { background: var(--code-bg); color: var(--fg); padding: 2px 4px; border-radius: 4px; }
@@ -749,7 +774,16 @@ app.get('/', (req, res) => {
         <a class="button" href="/capture?mode=playfs">Capture now (play + fullscreen)</a>
       </div>
     </header>
-    ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
+    <main class="rows">
+      <section class="row">
+        <h2>Live Snapshot</h2>
+        ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
+      </section>
+      <section class="row">
+        <h2>Stored Snapshots</h2>
+        ${all.length ? `<div class="thumbs">${thumbsHtml}</div>` : '<p>No stored snapshots yet.</p>'}
+      </section>
+    </main>
   </body>
 </html>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
