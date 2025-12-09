@@ -12,6 +12,8 @@ const OUTPUT_DIR = process.env.OUTPUT_DIR || '/tmp/images';
 const VIDEOS_DIR = path.join(OUTPUT_DIR, 'videos');
 const PROCESSED_DIR = path.join(OUTPUT_DIR, 'processed');
 const TMP_DIR = path.join(OUTPUT_DIR, '.tmp');
+const FULL_VIDEO_NAME = process.env.FULL_VIDEO_NAME || 'full.mp4';
+const FULL_VIDEO_PATH = path.join(VIDEOS_DIR, FULL_VIDEO_NAME);
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
 
@@ -217,6 +219,7 @@ let puppeteer; // assigned on first capture
 let browser;    // reused across captures
 let capturing = false;
 let scheduleTimer = null;
+let mergeTimer = null;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -780,6 +783,33 @@ async function runCaptureThenSchedule() {
   }
 }
 
+// Daily full-time merge at ~1am local time
+function msUntilNext1am() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(1, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return Math.max(5_000, next - now);
+}
+
+async function runMergeThenSchedule() {
+  try {
+    await mergeDailyVideosIntoFull().catch(() => {});
+  } finally {
+    const delay = 24 * 60 * 60 * 1000; // 24h
+    if (mergeTimer) clearTimeout(mergeTimer);
+    console.log('[merge] Next full merge scheduled in ~24h');
+    mergeTimer = setTimeout(runMergeThenSchedule, delay);
+  }
+}
+
+function scheduleFullMergeAt1am() {
+  const delay = msUntilNext1am();
+  if (mergeTimer) clearTimeout(mergeTimer);
+  console.log(`[merge] Scheduling full merge in ${Math.round(delay/1000)}s (at ~1am)`);
+  mergeTimer = setTimeout(runMergeThenSchedule, delay);
+}
+
 function getLatestImagePath() {
   try {
     const files = fs.readdirSync(OUTPUT_DIR)
@@ -804,6 +834,42 @@ function getVideosSorted(limit) {
   }
 }
 
+// Only YYYY-MM-DD.mp4 daily videos
+function getDailyVideosSorted() {
+  try {
+    const re = /^\d{4}-\d{2}-\d{2}\.mp4$/i;
+    return fs.readdirSync(VIDEOS_DIR)
+      .filter(name => re.test(name))
+      .map(name => ({ name, full: path.join(VIDEOS_DIR, name), stat: fs.statSync(path.join(VIDEOS_DIR, name)) }))
+      .sort((a, b) => b.name.localeCompare(a.name)); // newest first
+  } catch (_) { return []; }
+}
+
+async function mergeDailyVideosIntoFull() {
+  const hasFfmpeg = await ffmpegAvailable();
+  if (!hasFfmpeg) { console.warn('[merge] ffmpeg not available; skipping full merge'); return false; }
+  const vids = getDailyVideosSorted();
+  if (vids.length === 0) { console.log('[merge] No daily videos to merge'); return false; }
+  ensureDir(VIDEOS_DIR);
+  ensureDir(TMP_DIR);
+  const listPath = path.join(TMP_DIR, 'concat-full.txt');
+  try { fs.unlinkSync(listPath); } catch (_) {}
+  const lines = vids.map(v => `file '${v.full.replace(/'/g, "'\\''")}'`).join('\n');
+  fs.writeFileSync(listPath, lines, 'utf8');
+  const out = FULL_VIDEO_PATH;
+  const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-an', out];
+  console.log(`[merge] ffmpeg ${args.join(' ')}`);
+  await new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'inherit', 'inherit'] });
+    p.on('error', reject);
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+  }).catch((e) => console.warn(`[merge] Failed to create full video: ${e && e.message ? e.message : e}`));
+  try { fs.unlinkSync(listPath); } catch (_) {}
+  const ok = fs.existsSync(out);
+  if (ok) console.log(`[merge] Full-time video updated at ${out}`);
+  return ok;
+}
+
 // List stored images (newest first). Optional limit
 function getImagesSorted(limit) {
   try {
@@ -819,6 +885,8 @@ function getImagesSorted(limit) {
 
 // Kick off an immediate first capture shortly after start, then schedule with jitter
 setTimeout(() => runCaptureThenSchedule(), 5000);
+// Schedule daily full-time video merge at ~1am local time
+scheduleFullMergeAt1am();
 
 // Web server
 const app = express();
@@ -837,7 +905,10 @@ app.get('/', (req, res) => {
   const latest = getLatestImagePath();
   const latestUrl = latest ? `/images/${encodeURIComponent(latest)}` : null;
   const all = getImagesSorted(100);
-  const vids = getVideosSorted(30);
+  const vids = getDailyVideosSorted().slice(0, 30);
+  const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
+  const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
+  const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
   const thumbsHtml = all.map(f => {
     const url = `/images/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
     const caption = new Date(f.stat.mtimeMs).toLocaleString();
@@ -906,6 +977,7 @@ app.get('/', (req, res) => {
       .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); border-color: var(--button-border); border-bottom-color: var(--bg); }
       .tab:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
       .tabpanels { border: 1px solid var(--button-border); border-top: none; padding: 12px; border-radius: 0 6px 6px 6px; }
+      .full video { width: 100%; height: auto; display: block; background: #000; }
     </style>
     <script>
       (function() {
@@ -945,7 +1017,7 @@ app.get('/', (req, res) => {
     <script>
       (function() {
         var KEY = 'home-active-tab';
-        var order = ['tab-live','tab-stored','tab-videos'];
+        var order = ['tab-live','tab-stored','tab-videos','tab-full'];
         function select(tabId) {
           order.forEach(function(id) {
             var btn = document.getElementById(id);
@@ -1002,6 +1074,7 @@ app.get('/', (req, res) => {
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
       <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
+      <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
     </div>
     <div class="tabpanels">
       <section id="panel-live" class="tabpanel" role="tabpanel" aria-labelledby="tab-live" aria-hidden="false">
@@ -1012,6 +1085,9 @@ app.get('/', (req, res) => {
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
+      </section>
+      <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
+        ${fullUrl ? `<div class="full"><video src="${fullUrl}" controls preload="metadata" playsinline></video></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
       </section>
     </div>
   </body>
