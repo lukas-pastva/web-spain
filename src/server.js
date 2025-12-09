@@ -32,12 +32,7 @@ const VIEWPORT_WIDTH = parseInt(process.env.VIEWPORT_WIDTH || '1920', 10);
 const VIEWPORT_HEIGHT = parseInt(process.env.VIEWPORT_HEIGHT || '1080', 10);
 const DEVICE_SCALE_FACTOR = parseFloat(process.env.DEVICE_SCALE_FACTOR || '1');
 
-// Optionally click the player's own fullscreen control inside the iframe (always attempted internally)
-const CLICK_IFRAME_FULLSCREEN = false;
-// Try clicking the player's central Play button before capture (always attempted internally)
-const CLICK_IFRAME_PLAY = false;
-// Combined mode flag no longer used (we always attempt play + fullscreen)
-const CLICK_IFRAME_PLAY_FULLSCREEN = true;
+// Always attempt Play + Fullscreen inside the iframe; no env toggles.
 const PLAYER_FRAME_URL_MATCH = process.env.PLAYER_FRAME_URL_MATCH || 'ipcamlive.com';
 // Comma-separated list to override default fullscreen control selectors inside the frame
 const PLAYER_FULLSCREEN_SELECTORS = (process.env.PLAYER_FULLSCREEN_SELECTORS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -374,8 +369,6 @@ async function tryHandleConsent(page) {
 }
 
 async function tryClickPlayerFullscreen(page, opts = {}) {
-  const force = !!opts.force;
-  if (!CLICK_IFRAME_FULLSCREEN && !force) return false;
   try {
     // Find the iframe frame that likely hosts the player
     const frames = page.frames();
@@ -442,8 +435,6 @@ async function tryClickPlayerFullscreen(page, opts = {}) {
 }
 
 async function tryClickPlayerPlay(page, opts = {}) {
-  const force = !!opts.force;
-  if (!CLICK_IFRAME_PLAY && !force) return false;
   try {
     const frames = page.frames();
     const playerFrame = frames.find(f => (f.url() || '').includes(PLAYER_FRAME_URL_MATCH));
