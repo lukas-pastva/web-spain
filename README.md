@@ -24,7 +24,7 @@ Build and run (images will be written to a local folder):
 # From repository root
 export IMAGE=webcam-snapshot:local
 
-docker build -t "$IMAGE" .
+docker build -f src/Dockerfile -t "$IMAGE" .
 mkdir -p ./images
 
 docker run --rm \
@@ -47,7 +47,7 @@ Open http://localhost:8080 to see the latest screenshot, and http://localhost:80
 export REG=your-registry
 export IMG=$REG/webcam-snapshot:latest
 
-docker build -t "$IMG" .
+docker build -f src/Dockerfile -t "$IMG" .
 docker push "$IMG"
 # Edit k8s/deployment.yaml and set image: $IMG
 ```
@@ -67,4 +67,3 @@ kubectl apply -f k8s/deployment.yaml
 
 - The app writes to `/tmp/images` which should be backed by a PersistentVolume in Kubernetes. The included `PersistentVolumeClaim` (`webcam-images-pvc`) requests 1Gi of storage using the cluster default StorageClass.
 - The Dockerfile uses the official Puppeteer base image which includes Chrome and required dependencies. The app launches Chrome in headless mode with `--no-sandbox` suitable for most Kubernetes environments.
-
