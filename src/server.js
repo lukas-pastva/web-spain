@@ -6,7 +6,7 @@ const os = require('os');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const TARGET_URL = process.env.TARGET_URL || 'https://www.algarapictures.com/webcam';
-const CAPTURE_INTERVAL_MS = parseInt(process.env.CAPTURE_INTERVAL_MS || '60000', 10);
+const CAPTURE_INTERVAL_MS = parseInt(process.env.CAPTURE_INTERVAL_MS || '300000', 10); // default 5 minutes
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/tmp/images';
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
@@ -19,6 +19,8 @@ const WAIT_FOR_SELECTOR_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_SELECTOR_TIME
 const POST_NAV_WAIT_MS = parseInt(process.env.POST_NAV_WAIT_MS || '1500', 10); // small delay to allow paint
 // Some streaming pages never reach network idle; allow configuring the goto waitUntil.
 const NAV_WAIT_UNTIL = (process.env.NAV_WAIT_UNTIL || 'domcontentloaded'); // 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'
+// Jitter settings so captures don't look like a strict cron
+const JITTER_MS = parseInt(process.env.JITTER_MS || '30000', 10); // ±30s by default
 
 // Ensure output directory exists
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -27,6 +29,7 @@ fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 let puppeteer; // assigned on first capture
 let browser;    // reused across captures
 let capturing = false;
+let scheduleTimer = null;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -138,6 +141,32 @@ async function captureOnce() {
   }
 }
 
+function computeNextDelay() {
+  const base = Math.max(10_000, CAPTURE_INTERVAL_MS);
+  const jitter = Math.max(0, JITTER_MS);
+  if (jitter === 0) return base;
+  const delta = Math.floor(Math.random() * (2 * jitter + 1)) - jitter; // [-jitter, +jitter]
+  const delay = Math.max(10_000, base + delta);
+  return delay;
+}
+
+function scheduleNext() {
+  const delay = computeNextDelay();
+  if (scheduleTimer) clearTimeout(scheduleTimer);
+  console.log(`[schedule] Next capture in ${Math.round(delay / 1000)}s (base=${Math.round(CAPTURE_INTERVAL_MS/1000)}s ±${Math.round(JITTER_MS/1000)}s)`);
+  scheduleTimer = setTimeout(runCaptureThenSchedule, delay);
+}
+
+async function runCaptureThenSchedule() {
+  try {
+    await captureOnce();
+  } catch (_) {
+    // captureOnce already logs errors
+  } finally {
+    scheduleNext();
+  }
+}
+
 function getLatestImagePath() {
   try {
     const files = fs.readdirSync(OUTPUT_DIR)
@@ -150,13 +179,8 @@ function getLatestImagePath() {
   }
 }
 
-// Start periodic capture timer
-setInterval(() => {
-  captureOnce();
-}, Math.max(10_000, CAPTURE_INTERVAL_MS));
-
-// Kick off an immediate first capture shortly after start
-setTimeout(() => captureOnce(), 5000);
+// Kick off an immediate first capture shortly after start, then schedule with jitter
+setTimeout(() => runCaptureThenSchedule(), 5000);
 
 // Web server
 const app = express();

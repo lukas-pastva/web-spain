@@ -10,7 +10,8 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
 ## Environment variables
 
 - `TARGET_URL` — Page to capture. Default: `https://www.algarapictures.com/webcam`
-- `CAPTURE_INTERVAL_MS` — Period between captures in ms. Default: `60000`
+- `CAPTURE_INTERVAL_MS` — Base period between captures in ms. Default: `300000` (5 minutes)
+- `JITTER_MS` — Adds ±jitter to each interval so it doesn't look like a strict cron. Default: `30000` (±30 seconds). Set to `0` to disable.
 - `OUTPUT_DIR` — Directory for images. Default: `/tmp/images`
 - `PORT` — HTTP server port. Default: `8080`
 - `IMAGE_FORMAT` — `jpeg` (default) or `png`
@@ -58,6 +59,18 @@ docker run --rm \
 ```
 
 Open http://localhost:8080 to see the latest screenshot, and http://localhost:8080/images/ to browse files.
+
+### Jittered scheduling
+
+By default the service schedules screenshots every 5 minutes with a random ±30s jitter. This avoids a rigid, clock-like cadence. You can tune it with:
+
+```
+# Every 2 minutes with ±10s jitter
+-e CAPTURE_INTERVAL_MS=120000 -e JITTER_MS=10000
+
+# Disable jitter
+-e JITTER_MS=0
+```
 
 ## Kubernetes deployment
 
