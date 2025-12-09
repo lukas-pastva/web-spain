@@ -17,6 +17,8 @@ const CLIP_SELECTOR = process.env.CLIP_SELECTOR || '';
 const CLIP_PADDING = parseInt(process.env.CLIP_PADDING || '0', 10); // px around the element
 const WAIT_FOR_SELECTOR_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_SELECTOR_TIMEOUT_MS || '30000', 10);
 const POST_NAV_WAIT_MS = parseInt(process.env.POST_NAV_WAIT_MS || '1500', 10); // small delay to allow paint
+// Some streaming pages never reach network idle; allow configuring the goto waitUntil.
+const NAV_WAIT_UNTIL = (process.env.NAV_WAIT_UNTIL || 'domcontentloaded'); // 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'
 
 // Ensure output directory exists
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -43,6 +45,7 @@ async function ensureBrowser() {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--autoplay-policy=no-user-gesture-required',
       '--no-zygote',
       '--single-process'
     ]
@@ -72,7 +75,7 @@ async function captureOnce() {
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
     );
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
-    await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60_000 });
+    await page.goto(TARGET_URL, { waitUntil: NAV_WAIT_UNTIL, timeout: 60_000 });
     if (POST_NAV_WAIT_MS > 0) {
       await sleep(POST_NAV_WAIT_MS);
     }
@@ -93,6 +96,8 @@ async function captureOnce() {
         if (!el) throw new Error('element not found after waitForSelector');
 
         if (CLIP_PADDING > 0) {
+          // Ensure element is in view before measuring
+          try { await el.evaluate(e => e.scrollIntoView({ block: 'center', inline: 'center' })); } catch (_) {}
           const box = await el.boundingBox();
           if (!box) throw new Error('no bounding box for element');
           const clip = {

@@ -18,7 +18,8 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
  - `CLIP_SELECTOR` — Optional CSS selector to capture only a specific element on the page (e.g., the embedded webcam iframe). Example: `iframe[src*="ipcamlive.com"]`.
  - `CLIP_PADDING` — Optional integer pixels to expand the clip around the selected element. Default: `0`.
  - `WAIT_FOR_SELECTOR_TIMEOUT_MS` — How long to wait for `CLIP_SELECTOR` to appear. Default: `30000`.
- - `POST_NAV_WAIT_MS` — Extra delay after navigation to let the page paint before capture. Default: `1500`.
+- `POST_NAV_WAIT_MS` — Extra delay after navigation to let the page paint before capture. Default: `1500`.
+ - `NAV_WAIT_UNTIL` — How Puppeteer waits for navigation to finish: `load`, `domcontentloaded` (default), `networkidle0`, or `networkidle2`. For streaming pages, `domcontentloaded` is recommended.
 
 ### Capture only the video (iframe) region
 
