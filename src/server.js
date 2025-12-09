@@ -3,11 +3,15 @@ const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spawn } = require('child_process');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const TARGET_URL = process.env.TARGET_URL || 'https://www.algarapictures.com/webcam';
 const CAPTURE_INTERVAL_MS = parseInt(process.env.CAPTURE_INTERVAL_MS || '300000', 10); // default 5 minutes
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/tmp/images';
+const VIDEOS_DIR = path.join(OUTPUT_DIR, 'videos');
+const PROCESSED_DIR = path.join(OUTPUT_DIR, 'processed');
+const TMP_DIR = path.join(OUTPUT_DIR, '.tmp');
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
 
@@ -54,8 +58,159 @@ const WAIT_FOR_PLAYING_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_PLAYING_TIMEOU
 // If CLIP_SELECTOR isn't provided, attempt to auto-clip the visible iframe matching PLAYER_FRAME_URL_MATCH
 const AUTO_CLIP_IFRAME_BY_URL = /^(1|true|yes|on)$/i.test(process.env.AUTO_CLIP_IFRAME_BY_URL || 'true');
 
-// Ensure output directory exists
+// Ensure output directories exist
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+try { fs.mkdirSync(VIDEOS_DIR, { recursive: true }); } catch (_) {}
+try { fs.mkdirSync(PROCESSED_DIR, { recursive: true }); } catch (_) {}
+try { fs.mkdirSync(TMP_DIR, { recursive: true }); } catch (_) {}
+
+// Date helpers
+function ymdFromMs(ms) {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function ymdToday() { return ymdFromMs(Date.now()); }
+
+// List raw images in OUTPUT_DIR root (not recursive)
+function listRootImages() {
+  try {
+    const names = fs.readdirSync(OUTPUT_DIR);
+    const out = [];
+    for (const name of names) {
+      if (name.startsWith('.') || name === 'videos' || name === 'processed') continue;
+      const full = path.join(OUTPUT_DIR, name);
+      let st;
+      try { st = fs.statSync(full); } catch (_) { continue; }
+      if (!st.isFile()) continue;
+      const low = name.toLowerCase();
+      if (!(low.endsWith('.jpg') || low.endsWith('.jpeg') || low.endsWith('.png'))) continue;
+      out.push({ name, full, stat: st });
+    }
+    out.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs); // ascending chronological
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+// Group images by YYYY-MM-DD (based on mtime)
+function groupImagesByDate(files) {
+  const map = new Map();
+  for (const f of files) {
+    const key = ymdFromMs(f.stat.mtimeMs);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(f);
+  }
+  return map;
+}
+
+function videoPathForDate(ymd) {
+  return path.join(VIDEOS_DIR, `${ymd}.mp4`);
+}
+function videoExistsForDate(ymd) {
+  try { return fs.existsSync(videoPathForDate(ymd)); } catch (_) { return false; }
+}
+
+function ensureDir(p) { try { fs.mkdirSync(p, { recursive: true }); } catch (_) {} }
+
+// Create a numbered sequence of symlinks for ffmpeg under a temp dir
+function prepareSequence(tmpBase, files, extHint) {
+  ensureDir(tmpBase);
+  // Clean tmpBase
+  for (const n of fs.readdirSync(tmpBase)) {
+    try { fs.rmSync(path.join(tmpBase, n), { force: true, recursive: true }); } catch (_) {}
+  }
+  // Decide extension group to use (prefer majority ext to avoid mixing)
+  const counts = files.reduce((acc, f) => { const e = (f.name.split('.').pop() || '').toLowerCase(); acc[e] = (acc[e]||0)+1; return acc; }, {});
+  const chosenExt = extHint || Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0] || 'jpg';
+  let idx = 1;
+  const used = [];
+  for (const f of files) {
+    const e = (f.name.split('.').pop() || '').toLowerCase();
+    if (e !== chosenExt) continue; // skip differing ext to keep ffmpeg input simple
+    const num = String(idx).padStart(6, '0');
+    const linkPath = path.join(tmpBase, `${num}.${chosenExt}`);
+    try {
+      try { fs.symlinkSync(f.full, linkPath); }
+      catch (_) { fs.copyFileSync(f.full, linkPath); }
+      used.push(linkPath);
+      idx++;
+    } catch (_) { /* ignore */ }
+  }
+  return { chosenExt, used };
+}
+
+function ffmpegAvailable() {
+  return new Promise((resolve) => {
+    try {
+      const p = spawn('ffmpeg', ['-version']);
+      let resolved = false;
+      p.on('error', () => { if (!resolved) { resolved = true; resolve(false); } });
+      p.on('exit', (code) => { if (!resolved) { resolved = true; resolve(code === 0 || code === 1); } });
+    } catch (_) { resolve(false); }
+  });
+}
+
+async function generateVideoForDate(ymd, files) {
+  if (!files || files.length === 0) return false;
+  const hasFfmpeg = await ffmpegAvailable();
+  if (!hasFfmpeg) {
+    console.warn(`[video] ffmpeg not available; skipping generation for ${ymd}`);
+    return false;
+  }
+  const tmpBase = path.join(TMP_DIR, `seq-${ymd}`);
+  const { chosenExt, used } = prepareSequence(tmpBase, files);
+  if (used.length === 0) {
+    console.warn(`[video] No images prepared for ${ymd}`);
+    return false;
+  }
+  ensureDir(VIDEOS_DIR);
+  const out = videoPathForDate(ymd);
+  const args = ['-y', '-framerate', '30', '-i', path.join(tmpBase, `%06d.${chosenExt}`), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', out];
+  console.log(`[video] ffmpeg ${args.join(' ')}`);
+  await new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'inherit', 'inherit'] });
+    p.on('error', reject);
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+  }).catch((e) => { console.warn(`[video] Generation failed for ${ymd}: ${e && e.message ? e.message : e}`); });
+  // Clean temp sequence
+  try { fs.rmSync(tmpBase, { recursive: true, force: true }); } catch (_) {}
+  const ok = fs.existsSync(out);
+  if (ok) console.log(`[video] Created ${out}`);
+  return ok;
+}
+
+function moveFilesToProcessed(ymd, files) {
+  const destDir = path.join(PROCESSED_DIR, ymd);
+  ensureDir(destDir);
+  for (const f of files) {
+    try {
+      const dest = path.join(destDir, f.name);
+      fs.renameSync(f.full, dest);
+    } catch (e) {
+      // best-effort; continue
+    }
+  }
+  console.log(`[archive] Moved ${files.length} files to ${destDir}`);
+}
+
+async function processUnarchivedDays() {
+  const today = ymdToday();
+  const files = listRootImages();
+  const map = groupImagesByDate(files);
+  for (const [ymd, arr] of map.entries()) {
+    if (ymd >= today) continue; // only process days strictly before today
+    let created = false;
+    if (!videoExistsForDate(ymd)) {
+      try { created = await generateVideoForDate(ymd, arr); } catch (_) { created = false; }
+    }
+    // Move images to processed regardless of video success to avoid piling up
+    moveFilesToProcessed(ymd, arr);
+  }
+}
 
 // Lazy-load puppeteer on first use to speed cold start of the web server
 let puppeteer; // assigned on first capture
@@ -616,6 +771,8 @@ function scheduleNext() {
 async function runCaptureThenSchedule() {
   try {
     await captureOnce();
+    // After each capture, attempt to process previous days into videos and archive
+    await processUnarchivedDays().catch(() => {});
   } catch (_) {
     // captureOnce already logs errors
   } finally {
@@ -632,6 +789,18 @@ function getLatestImagePath() {
     return files.length ? files[0].name : null;
   } catch (e) {
     return null;
+  }
+}
+
+function getVideosSorted(limit) {
+  try {
+    const files = fs.readdirSync(VIDEOS_DIR)
+      .filter(f => f.toLowerCase().endsWith('.mp4'))
+      .map(name => ({ name, full: path.join(VIDEOS_DIR, name), stat: fs.statSync(path.join(VIDEOS_DIR, name)) }))
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+    return typeof limit === 'number' ? files.slice(0, Math.max(0, limit)) : files;
+  } catch (e) {
+    return [];
   }
 }
 
@@ -668,10 +837,16 @@ app.get('/', (req, res) => {
   const latest = getLatestImagePath();
   const latestUrl = latest ? `/images/${encodeURIComponent(latest)}` : null;
   const all = getImagesSorted(100);
+  const vids = getVideosSorted(30);
   const thumbsHtml = all.map(f => {
     const url = `/images/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
     const caption = new Date(f.stat.mtimeMs).toLocaleString();
     return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${f.name}" loading="lazy" /><div class="caption">${caption}</div></a>`;
+  }).join('');
+  const videosHtml = vids.map(v => {
+    const url = `/images/videos/${encodeURIComponent(v.name)}?v=${Math.floor(v.stat.mtimeMs)}`;
+    const caption = v.name.replace(/\.mp4$/i, '');
+    return `<a href="${url}" target="_blank" rel="noopener"><div class="video-card"><video src="${url}" preload="metadata" controls playsinline></video><div class="caption">${caption}</div></div></a>`;
   }).join('');
   const body = `<!doctype html>
 <html lang="en">
@@ -714,6 +889,10 @@ app.get('/', (req, res) => {
       .thumbs a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
       .thumbs img { width: 100%; height: 120px; object-fit: cover; display: block; background: #000; }
       .thumbs .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+      .videos a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
+      .videos video { width: 100%; height: 150px; background: #000; display: block; object-fit: cover; }
+      .videos .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       a.button { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); border-radius: 4px; text-decoration: none; color: var(--button-fg); background: var(--button-bg); }
       a.button:hover { filter: brightness(0.98); }
       code { background: var(--code-bg); color: var(--fg); padding: 2px 4px; border-radius: 4px; }
@@ -782,6 +961,10 @@ app.get('/', (req, res) => {
       <section class="row">
         <h2>Stored Snapshots</h2>
         ${all.length ? `<div class="thumbs">${thumbsHtml}</div>` : '<p>No stored snapshots yet.</p>'}
+      </section>
+      <section class="row">
+        <h2>Daily Videos (30 fps)</h2>
+        ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
       </section>
     </main>
   </body>

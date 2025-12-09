@@ -5,6 +5,11 @@ WORKDIR /app
 
 # Install dependencies first for better layer caching
 COPY package.json ./
+## Install ffmpeg for daily video generation
+USER root
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
 RUN if [ -f package-lock.json ]; then \
       npm ci --omit=dev; \
     else \
