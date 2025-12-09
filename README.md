@@ -3,7 +3,7 @@
 A tiny Node/Express + Puppeteer service that periodically captures screenshots of a target web page and saves them into `/tmp/images` (designed to be a mounted volume in Kubernetes). The service also serves a simple web page showing the latest screenshot and exposes the image directory.
 
 - Default target: `https://www.algarapictures.com/webcam`
-- Default interval: `60000` ms (60 seconds)
+- Default interval: `300000` ms (5 minutes)
 - Default output dir: `/tmp/images`
 - Web port: `8080`
 
@@ -31,10 +31,14 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
  - `VIEWPORT_WIDTH` — Browser viewport width in pixels. Default: `1920`.
  - `VIEWPORT_HEIGHT` — Browser viewport height in pixels. Default: `1080`.
 - `DEVICE_SCALE_FACTOR` — Pixel density multiplier for sharper output (e.g., `2` for “retina”-like). Default: `1`.
- - `CLICK_IFRAME_FULLSCREEN` — When `true`, tries to click the player's fullscreen button inside the iframe (e.g., IPCamLive) before capturing. Default: `false`.
- - `PLAYER_FRAME_URL_MATCH` — Substring to identify the player iframe URL. Default: `ipcamlive.com`.
- - `PLAYER_FULLSCREEN_SELECTORS` — Optional comma-separated CSS selectors to find the fullscreen control inside the player iframe. Defaults include common variants like `button[aria-label*="Full"]`, `.vjs-fullscreen-control`, `.fullscreen`.
- - `AUTO_CLIP_IFRAME_BY_URL` — When `true` (default), if no `CLIP_SELECTOR` is provided the service auto-detects the largest visible `<iframe>` whose `src` includes `PLAYER_FRAME_URL_MATCH` and crops to it.
+- `CLICK_IFRAME_FULLSCREEN` — When `true`, tries to click the player's fullscreen button inside the iframe (e.g., IPCamLive) before capturing. Default: `false`.
+- `CLICK_IFRAME_PLAY` — When `true`, tries to click the player's central Play button inside the iframe before capturing, then waits briefly for playback. Helps when the player shows a static poster with a big Play icon. Default: `false`.
+- `PLAYER_FRAME_URL_MATCH` — Substring to identify the player iframe URL. Default: `ipcamlive.com`.
+- `PLAYER_FULLSCREEN_SELECTORS` — Optional comma-separated CSS selectors to find the fullscreen control inside the player iframe. Defaults include common variants like `button[aria-label*="Full"]`, `.vjs-fullscreen-control`, `.fullscreen`.
+- `PLAYER_PLAY_SELECTORS` — Optional comma-separated CSS selectors to find the Play control inside the player iframe. Defaults include common variants like `.vjs-big-play-button`, `button[aria-label*="Play"]`, `.jw-icon-playback`.
+- `PLAY_WAIT_MS` — Delay after clicking Play before capturing, in ms. Default: `1200`.
+- `WAIT_FOR_PLAYING_TIMEOUT_MS` — How long to poll for `<video>` playback after clicking Play, in ms. Default: `4000`.
+- `AUTO_CLIP_IFRAME_BY_URL` — When `true` (default), if no `CLIP_SELECTOR` is provided the service auto-detects the largest visible `<iframe>` whose `src` includes `PLAYER_FRAME_URL_MATCH` and crops to it.
 
 ### Capture only the video (iframe) region
 
@@ -63,6 +67,26 @@ To make the embedded player itself go fullscreen (instead of CSS-promoting the i
 ```
 
 The service tries several common selectors for the fullscreen control, attempts to generate a user gesture inside the player, and (as a last resort) requests fullscreen on a likely media element.
+
+### Start playback before capture (new)
+
+If your capture shows only a static poster with a big Play icon, enable Play-then-capture so the service clicks the central Play button first and then takes the screenshot:
+
+```
+-e CLICK_IFRAME_PLAY=true \
+-e PLAYER_FRAME_URL_MATCH=ipcamlive.com
+```
+
+You can tune delays/selectors with `PLAY_WAIT_MS`, `WAIT_FOR_PLAYING_TIMEOUT_MS`, and `PLAYER_PLAY_SELECTORS`.
+
+### On-demand captures from the web UI
+
+The home page now includes two buttons:
+
+- `Capture now (normal)` — performs an immediate capture with the current settings
+- `Capture now (play first)` — performs an immediate capture that clicks Play first (regardless of the default)
+
+These map to `GET /capture?mode=normal` and `GET /capture?mode=play` respectively.
 
 If you don’t provide `CLIP_SELECTOR`, the service will automatically crop to the largest visible iframe whose URL contains `PLAYER_FRAME_URL_MATCH` (see `AUTO_CLIP_IFRAME_BY_URL`).
 

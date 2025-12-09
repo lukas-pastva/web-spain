@@ -38,9 +38,17 @@ const DEVICE_SCALE_FACTOR = parseFloat(process.env.DEVICE_SCALE_FACTOR || '1');
 
 // Optionally click the player's own fullscreen control inside the iframe
 const CLICK_IFRAME_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_FULLSCREEN || 'false');
+// New: try clicking the player's central Play button before capture
+const CLICK_IFRAME_PLAY = /^(1|true|yes|on)$/i.test(process.env.CLICK_IFRAME_PLAY || 'false');
 const PLAYER_FRAME_URL_MATCH = process.env.PLAYER_FRAME_URL_MATCH || 'ipcamlive.com';
 // Comma-separated list to override default fullscreen control selectors inside the frame
 const PLAYER_FULLSCREEN_SELECTORS = (process.env.PLAYER_FULLSCREEN_SELECTORS || '').split(',').map(s => s.trim()).filter(Boolean);
+// Comma-separated list to override default play control selectors inside the frame
+const PLAYER_PLAY_SELECTORS = (process.env.PLAYER_PLAY_SELECTORS || '').split(',').map(s => s.trim()).filter(Boolean);
+// How long to wait after clicking play before capturing (ms)
+const PLAY_WAIT_MS = parseInt(process.env.PLAY_WAIT_MS || '1200', 10);
+// How long to wait for a <video> element to start playing (polling timeout, ms)
+const WAIT_FOR_PLAYING_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_PLAYING_TIMEOUT_MS || '4000', 10);
 // If CLIP_SELECTOR isn't provided, attempt to auto-clip the visible iframe matching PLAYER_FRAME_URL_MATCH
 const AUTO_CLIP_IFRAME_BY_URL = /^(1|true|yes|on)$/i.test(process.env.AUTO_CLIP_IFRAME_BY_URL || 'true');
 
@@ -283,7 +291,79 @@ async function tryClickPlayerFullscreen(page) {
   return false;
 }
 
-async function captureOnce() {
+async function tryClickPlayerPlay(page) {
+  if (!CLICK_IFRAME_PLAY) return false;
+  try {
+    const frames = page.frames();
+    const playerFrame = frames.find(f => (f.url() || '').includes(PLAYER_FRAME_URL_MATCH));
+    if (!playerFrame) return false;
+
+    // Attempt to click a central/big play control commonly used by players
+    const selectors = PLAYER_PLAY_SELECTORS.length ? PLAYER_PLAY_SELECTORS : [
+      // Common ARIA/title labels
+      'button[aria-label*="play" i]',
+      'button[title*="play" i]',
+      'button[aria-label*="reproducir" i]',
+      'button[title*="reproducir" i]',
+      // Popular players
+      '.vjs-big-play-button',
+      '.jw-icon-playback',
+      '.jw-icon-play',
+      '.fp-play',
+      // Generic fallbacks
+      'button[class*="play" i]',
+      '[class*="big-play" i]',
+      '[class*="center" i][class*="play" i]'
+    ];
+
+    // Try a light tap inside the frame to generate a gesture context
+    try { await playerFrame.click('body', { delay: 10 }); } catch (_) {}
+
+    for (const sel of selectors) {
+      try {
+        const el = await playerFrame.$(sel);
+        if (!el) continue;
+        await el.click({ delay: 10 });
+        // Wait a moment for playback to start
+        await sleep(Math.max(0, PLAY_WAIT_MS));
+        const isPlaying = await playerFrame.evaluate((timeoutMs) => new Promise(resolve => {
+          const deadline = Date.now() + Math.max(0, timeoutMs || 0);
+          function check() {
+            try {
+              const v = document.querySelector('video');
+              if (v && !v.paused && v.readyState >= 2) return resolve(true);
+            } catch (_) {}
+            if (Date.now() > deadline) return resolve(false);
+            setTimeout(check, 200);
+          }
+          check();
+        }), WAIT_FOR_PLAYING_TIMEOUT_MS).catch(() => true); // if cross-origin execution fails, assume success
+        if (isPlaying) return true;
+      } catch (_) {
+        // try next selector
+      }
+    }
+
+    // As a last resort, programmatically attempt to start playback on a <video>
+    try {
+      const ok = await playerFrame.evaluate(async () => {
+        const v = document.querySelector('video');
+        if (!v) return false;
+        try { v.muted = true; } catch (_) {}
+        try { await v.play(); return true; } catch (_) { return false; }
+      });
+      if (ok) {
+        await sleep(Math.max(0, PLAY_WAIT_MS));
+        return true;
+      }
+    } catch (_) { /* ignore */ }
+  } catch (_) {
+    // ignore
+  }
+  return false;
+}
+
+async function captureOnce(options = {}) {
   if (capturing) return; // skip overlapping runs
   capturing = true;
   try {
@@ -303,6 +383,15 @@ async function captureOnce() {
 
     // Option 1: try clicking the player's own fullscreen button inside the iframe
     let playerFullscreen = await tryClickPlayerFullscreen(page);
+
+    // Option 1b: optionally click the player's central Play control before capture
+    let playerPlayClicked = false;
+    try {
+      const wantPlay = options.playThenCapture === true || (options.playThenCapture === undefined && CLICK_IFRAME_PLAY);
+      if (wantPlay) {
+        playerPlayClicked = await tryClickPlayerPlay(page);
+      }
+    } catch (_) { /* ignore */ }
 
     // Option 2: as a fallback, promote the target element (webcam iframe) to fullscreen via CSS
     let fullscreenApplied = false;
@@ -436,6 +525,7 @@ async function captureOnce() {
     await page.close();
 
     console.log(`[capture] Saved ${filePath}`);
+    return filePath;
   } catch (err) {
     console.error('[capture] Error:', err && err.message ? err.message : err);
     try {
@@ -534,6 +624,8 @@ app.get('/', (req, res) => {
       <div class="grid">
         <a class="button" href="/images/" target="_blank">Browse images</a>
         <a class="button" href="/healthz" target="_blank">Health</a>
+        <a class="button" href="/capture?mode=normal">Capture now (normal)</a>
+        <a class="button" href="/capture?mode=play">Capture now (play first)</a>
       </div>
     </header>
     ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
@@ -541,6 +633,23 @@ app.get('/', (req, res) => {
 </html>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.status(200).send(body);
+});
+
+// On-demand capture endpoint with optional mode
+app.get('/capture', async (req, res) => {
+  if (capturing) {
+    return res.status(409).send('Capture already in progress');
+  }
+  const mode = String(req.query.mode || '').toLowerCase();
+  const playThenCapture = mode === 'play' || mode === 'playfirst' || mode === 'play-first';
+  try {
+    const file = await captureOnce({ playThenCapture });
+    if (!file) return res.status(500).send('Capture failed');
+    // Redirect back to home where the latest screenshot is shown
+    res.redirect(303, '/');
+  } catch (e) {
+    res.status(500).send('Capture error');
+  }
 });
 
 app.listen(PORT, () => {
