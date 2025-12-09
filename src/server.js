@@ -925,7 +925,7 @@ app.get('/', (req, res) => {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Webcam Snapshot Service</title>
-    <meta http-equiv="refresh" content="30" />
+    <meta http-equiv="refresh" content="${Math.max(30, Math.floor(CAPTURE_INTERVAL_MS / 1000 / 2))}" />
     <style>
       :root {
         --bg: #ffffff;

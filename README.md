@@ -1,6 +1,6 @@
 # Webcam Snapshot Service
 
-A tiny Node/Express + Puppeteer service that periodically captures screenshots of a target web page and saves them into `/tmp/images` (designed to be a mounted volume in Kubernetes). The service also serves a simple web page showing the latest screenshot and exposes the image directory.
+A tiny Node/Express + Puppeteer service that periodically captures screenshots of a target web page and saves them into `/tmp/images` (designed to be a mounted volume in Kubernetes). The service also serves a simple web page showing the latest snapshot, daily videos, and a full-time merged video; it also exposes the image directory.
 
 - Default target: `https://www.algarapictures.com/webcam`
 - Default interval: `300000` ms (5 minutes)
@@ -80,17 +80,16 @@ If your capture shows only a static poster with a big Play icon, enable Play-the
 
 You can tune delays/selectors with `PLAY_WAIT_MS`, `WAIT_FOR_PLAYING_TIMEOUT_MS`, and `PLAYER_PLAY_SELECTORS`.
 
-### On-demand captures from the web UI
+### Web UI and tabs
 
-The home page now includes three buttons:
+The home page shows:
 
-- `Capture now (normal)` — performs an immediate capture with the current settings
-- `Capture now (play first)` — performs an immediate capture that clicks Play first (regardless of the default)
-- `Capture now (play + fullscreen)` — clicks Play, hovers to reveal the fullscreen control, clicks it, and then captures a fullscreen screenshot
+- Live — latest snapshot (auto-refreshes)
+- Stored — recent snapshots not yet archived (typically today’s)
+- Videos — daily videos (30 fps) generated from each day’s snapshots
+- Full-time — a merged video concatenating the daily videos
 
-These map to `GET /capture?mode=normal`, `GET /capture?mode=play`, and `GET /capture?mode=playfs` respectively.
-
-If you don’t provide `CLIP_SELECTOR`, the service will automatically crop to the largest visible iframe whose URL contains `PLAYER_FRAME_URL_MATCH` (see `AUTO_CLIP_IFRAME_BY_URL`).
+No manual capture buttons are present; captures run on the configured schedule only.
 
 ### Persist consent/cookies (optional)
 
@@ -122,7 +121,7 @@ docker run --rm \
   "$IMAGE"
 ```
 
-Open http://localhost:8080 to see the latest screenshot, and http://localhost:8080/images/ to browse files.
+Open http://localhost:8080 to see the UI. You can browse the raw files under http://localhost:8080/images/.
 
 ### Jittered scheduling
 
