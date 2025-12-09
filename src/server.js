@@ -984,10 +984,21 @@ app.get('/day/:ymd', (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return res.status(400).send('Bad date');
   const imgs = listImagesForDate(ymd);
   const rel = ymd === ymdToday() ? '' : `/processed/${ymd}`;
+  const latest = getLatestImagePath();
+  const latestUrl = latest ? `/images/${encodeURIComponent(latest)}` : null;
+  const vids = getDailyVideosSorted().slice(0, 30);
+  const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
+  const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
+  const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
   const grid = imgs.map(f => {
     const url = `/images${rel}/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
     const caption = new Date(f.stat.mtimeMs).toLocaleString();
     return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${f.name}" loading="lazy" /><div class="caption">${caption}</div></a>`;
+  }).join('');
+  const videosHtml = vids.map(v => {
+    const url = `/images/videos/${encodeURIComponent(v.name)}?v=${Math.floor(v.stat.mtimeMs)}`;
+    const caption = v.name.replace(/\.mp4$/i, '');
+    return `<a href="${url}" target="_blank" rel="noopener"><div class="video-card"><video src="${url}" preload="metadata" controls playsinline></video><div class="caption">${caption}</div></div></a>`;
   }).join('');
   const body = `<!doctype html>
 <html lang="en">
@@ -1000,39 +1011,116 @@ app.get('/day/:ymd', (req, res) => {
       [data-theme="dark"] { --bg:#0f1115; --fg:#e6e6e6; --muted:#a0a0a0; --border:#2a2f3a; --button-bg:#171a21; --button-fg:#e6e6e6; --button-border:#2a2f3a; --code-bg:#111827; }
       html, body { background: var(--bg); color: var(--fg); }
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
-      header { display:flex; align-items:center; justify-content: space-between; gap:12px; margin-bottom: 16px; }
+      header { margin-bottom: 16px; }
+      header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      img { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 4px; }
+      .meta { color: var(--muted); font-size: 0.9em; margin: 8px 0; }
       a.button { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); border-radius: 4px; text-decoration: none; color: var(--button-fg); background: var(--button-bg); }
+      code { background: var(--code-bg); color: var(--fg); padding: 2px 4px; border-radius: 4px; }
+      /* Icon-only theme button */
+      .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
+      .icon-btn:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      /* Tabs */
+      .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-top: 12px; }
+      .tab { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-top-left-radius: 6px; border-top-right-radius: 6px; cursor: pointer; }
+      .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); border-color: var(--button-border); border-bottom-color: var(--bg); }
+      .tab:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      .tabpanels { border: 1px solid var(--button-border); border-top: none; padding: 12px; border-radius: 0 6px 6px 6px; }
+      /* Grids */
       .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
       .thumbs a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
       .thumbs img { width: 100%; height: 120px; object-fit: cover; display: block; background: #000; }
       .thumbs .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      /* theme btn */
-      .icon-btn { appearance:none; border:1px solid var(--button-border); background:var(--button-bg); color:var(--button-fg); border-radius:999px; width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; }
-      .icon-btn:focus { outline: 2px solid #5b9cff; outline-offset:2px; }
+      .videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+      .videos a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
+      .videos video { width: 100%; height: 150px; background: #000; display: block; object-fit: cover; }
+      .videos .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .full video { width: 100%; height: auto; display: block; background: #000; }
+      .hint { color: var(--muted); font-size: 0.9em; margin: 0 0 8px; }
     </style>
     <script>
       (function() {
         var KEY = 'theme-preference';
         var mql = window.matchMedia('(prefers-color-scheme: dark)');
-        function apply(mode){ var eff = mode==='auto' ? (mql.matches?'dark':'light') : mode; document.documentElement.setAttribute('data-theme', eff); }
-        var mode = (function(){ try { return localStorage.getItem(KEY) || 'auto'; } catch(_) { return 'auto'; } })();
-        apply(mode);
-        function icon(m){ return m==='light'?'☀️':(m==='dark'?'🌙':'🖥️'); }
-        function title(m){ return 'Theme: '+(m.charAt(0).toUpperCase()+m.slice(1)); }
-        function upd(){ var b=document.getElementById('theme-btn'); var i=document.getElementById('theme-icon'); if(b) b.title=title(mode); if(i) i.textContent=icon(mode); }
-        window.__cycleTheme = function(){ mode = mode==='auto'?'light':(mode==='light'?'dark':'auto'); try{localStorage.setItem(KEY,mode);}catch(_){} apply(mode); upd(); };
-        if (mql && mql.addEventListener) mql.addEventListener('change', function(){ if(mode==='auto') apply(mode); });
-        else if (mql && mql.addListener) mql.addListener(function(){ if(mode==='auto') apply(mode); });
-        window.addEventListener('DOMContentLoaded', upd);
+        function getStored() { try { return localStorage.getItem(KEY) || 'auto'; } catch (_) { return 'auto'; } }
+        function applyTheme(mode) { var effective = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode; document.documentElement.setAttribute('data-theme', effective); }
+        var mode = getStored();
+        applyTheme(mode);
+        function iconFor(m) { return m === 'light' ? '☀️' : (m === 'dark' ? '🌙' : '🖥️'); }
+        function titleFor(m) { return 'Theme: ' + (m.charAt(0).toUpperCase() + m.slice(1)); }
+        function updateUi() { var btn = document.getElementById('theme-btn'); var ico = document.getElementById('theme-icon'); if (btn) btn.setAttribute('title', titleFor(mode)); if (ico) ico.textContent = iconFor(mode); }
+        window.__cycleTheme = function() { mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto'); try { localStorage.setItem(KEY, mode); } catch (_) {} applyTheme(mode); updateUi(); };
+        if (mql && mql.addEventListener) { mql.addEventListener('change', function() { if (mode === 'auto') applyTheme(mode); }); }
+        else if (mql && mql.addListener) { mql.addListener(function() { if (mode === 'auto') applyTheme(mode); }); }
+        window.addEventListener('DOMContentLoaded', updateUi);
+      })();
+    </script>
+    <script>
+      (function() {
+        var KEY = 'home-active-tab';
+        var order = ['tab-live','tab-stored','tab-videos','tab-full'];
+        function select(tabId) {
+          order.forEach(function(id) {
+            var btn = document.getElementById(id);
+            var panel = document.getElementById('panel-' + id.split('-')[1]);
+            var active = id === tabId;
+            if (btn) btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            if (panel) { panel.hidden = !active; panel.setAttribute('aria-hidden', active ? 'false' : 'true'); }
+          });
+          try { localStorage.setItem(KEY, tabId); } catch (_) {}
+        }
+        function init() {
+          var saved = 'tab-stored';
+          try { saved = localStorage.getItem(KEY) || 'tab-stored'; } catch (_) {}
+          if (!document.getElementById(saved)) saved = 'tab-stored';
+          order.forEach(function(id, idx) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('click', function() { select(id); });
+            el.addEventListener('keydown', function(e) {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                var next = order[(idx + (e.key === 'ArrowRight' ? 1 : -1) + order.length) % order.length];
+                var ne = document.getElementById(next);
+                if (ne) { ne.focus(); select(next); }
+              }
+            });
+          });
+          select(saved);
+        }
+        window.addEventListener('DOMContentLoaded', init);
       })();
     </script>
   </head>
   <body>
     <header>
-      <h1>Snapshots for ${ymd}</h1>
-      <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
+      <div class="header-row">
+        <h1>Webcam Snapshot Service</h1>
+        <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
+      </div>
+      <div class="meta">Target: <code>${TARGET_URL}</code></div>
     </header>
-    ${imgs.length ? `<div class="thumbs">${grid}</div>` : '<p>No images for this date.</p>'}
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="false" class="tab">Live</button>
+      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="true" class="tab">Stored</button>
+      <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
+      <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
+    </div>
+    <div class="tabpanels">
+      <section id="panel-live" class="tabpanel" role="tabpanel" aria-labelledby="tab-live" hidden aria-hidden="true">
+        ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
+      </section>
+      <section id="panel-stored" class="tabpanel" role="tabpanel" aria-labelledby="tab-stored" aria-hidden="false">
+        <div class="hint">Snapshots for <strong>${ymd}</strong></div>
+        ${imgs.length ? `<div class="thumbs">${grid}</div>` : '<p>No images for this date.</p>'}
+      </section>
+      <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
+        ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
+      </section>
+      <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
+        ${fullUrl ? `<div class="full"><video src="${fullUrl}" controls preload="metadata" playsinline></video></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
+      </section>
+    </div>
   </body>
 </html>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
