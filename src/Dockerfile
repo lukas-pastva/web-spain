@@ -22,6 +22,10 @@ COPY . .
 # Non-root user provided by the Puppeteer image
 USER pptruser
 
+# Pre-install Chrome for Testing managed by Puppeteer, so runtime has a browser
+# cached at /home/pptruser/.cache/puppeteer. This avoids "Could not find Chrome" errors.
+RUN npx puppeteer browsers install chrome
+
 ENV NODE_ENV=production \
     PORT=8080 \
     OUTPUT_DIR=/tmp/images

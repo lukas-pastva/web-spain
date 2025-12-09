@@ -76,6 +76,28 @@ docker run --rm \
 
 Open http://localhost:8080 to see the UI. The UI includes tabs for Live, Stored, Videos, and Full-time.
 
+### Browser installation (fixing "Could not find Chrome")
+
+This project uses Puppeteer v23+, which relies on a managed "Chrome for Testing" build. The base image `ghcr.io/puppeteer/puppeteer` contains all OS deps but not the browser binary by default. The included `src/Dockerfile` now pre-installs Chrome during the image build with:
+
+```
+RUN npx puppeteer browsers install chrome
+```
+
+If you’re running an older image or a local Node process and see errors like:
+
+```
+Error: Could not find Chrome (ver. 131.x)
+```
+
+fix it by installing the browser once in that environment:
+
+```
+npx puppeteer browsers install chrome
+```
+
+Alternatively, if you have a system Chrome/Chromium, you can set `PUPPETEER_EXECUTABLE_PATH` to its path and the app will use it directly.
+
 ### Jittered scheduling
 
 By default the service schedules screenshots every 5 minutes with a random ±30s jitter. This avoids a rigid, clock-like cadence. You can tune it with:
@@ -116,4 +138,4 @@ kubectl apply -f k8s/deployment.yaml
 ## Notes
 
 - The app writes to `/tmp/images` which should be backed by a PersistentVolume in Kubernetes. The included `PersistentVolumeClaim` (`webcam-images-pvc`) requests 1Gi of storage using the cluster default StorageClass.
-- The Dockerfile uses the official Puppeteer base image which includes Chrome and required dependencies. The app launches Chrome in headless mode with `--no-sandbox` suitable for most Kubernetes environments.
+- The Dockerfile uses the official Puppeteer base image with all required OS dependencies. The image build explicitly installs Chrome for Testing via `npx puppeteer browsers install chrome`, and the app launches it in headless mode with `--no-sandbox` suitable for most Kubernetes environments.
