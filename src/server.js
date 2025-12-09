@@ -165,6 +165,7 @@ let browser;    // reused across captures
 let capturing = false;
 let scheduleTimer = null;
 let mergeTimer = null;
+let nextCaptureDueAtMs = 0;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -184,8 +185,7 @@ async function ensureBrowser() {
       '--disable-dev-shm-usage',
       '--disable-gpu',
       '--autoplay-policy=no-user-gesture-required',
-      '--no-zygote',
-      '--single-process'
+      '--no-zygote'
     ]
   };
 
@@ -514,6 +514,7 @@ async function captureOnce(options = {}) {
   if (capturing) return; // skip overlapping runs
   capturing = true;
   try {
+    console.log('[capture] Starting');
     const b = await ensureBrowser();
     const page = await b.newPage();
     await page.setUserAgent(
@@ -577,11 +578,13 @@ function computeNextDelay() {
 function scheduleNext() {
   const delay = computeNextDelay();
   if (scheduleTimer) clearTimeout(scheduleTimer);
+  nextCaptureDueAtMs = Date.now() + delay;
   console.log(`[schedule] Next capture in ${Math.round(delay / 1000)}s (base=${Math.round(CAPTURE_INTERVAL_MS/1000)}s ±${Math.round(JITTER_MS/1000)}s)`);
   scheduleTimer = setTimeout(runCaptureThenSchedule, delay);
 }
 
 async function runCaptureThenSchedule() {
+  console.log('[schedule] Timer fired');
   try {
     await captureOnce();
     // After each capture, attempt to process previous days into videos and archive
@@ -723,6 +726,23 @@ function getCoverForDate(ymd) {
 setTimeout(() => runCaptureThenSchedule(), 5000);
 // Schedule daily full-time video merge at ~1am local time
 scheduleFullMergeAt1am();
+
+// Watchdog: if a scheduled capture fails to fire (e.g., timer lost), recover.
+setInterval(() => {
+  try {
+    const now = Date.now();
+    const overdueByMs = nextCaptureDueAtMs ? (now - nextCaptureDueAtMs) : -1;
+    const isOverdue = nextCaptureDueAtMs > 0 && overdueByMs > 2000; // 2s grace
+    const noTimer = !scheduleTimer;
+    if (!capturing && (noTimer || isOverdue)) {
+      if (scheduleTimer) { try { clearTimeout(scheduleTimer); } catch (_) {} }
+      scheduleTimer = null;
+      console.warn('[schedule] Watchdog: missed or lost timer; triggering capture now');
+      // Trigger immediately; runCaptureThenSchedule() will reschedule on completion.
+      runCaptureThenSchedule().catch(() => {});
+    }
+  } catch (_) { /* ignore */ }
+}, 10_000);
 
 // Web server
 const app = express();
