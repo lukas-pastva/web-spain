@@ -1065,9 +1065,6 @@ app.get('/', (req, res) => {
       <div class="grid">
         <a class="button" href="/images/" target="_blank">Browse images</a>
         <a class="button" href="/healthz" target="_blank">Health</a>
-        <a class="button" href="/capture?mode=normal">Capture now (normal)</a>
-        <a class="button" href="/capture?mode=play">Capture now (play first)</a>
-        <a class="button" href="/capture?mode=playfs">Capture now (play + fullscreen)</a>
       </div>
     </header>
     <div class="tabs" role="tablist" aria-label="Views">
