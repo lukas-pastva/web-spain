@@ -802,6 +802,8 @@ app.get('/', (req, res) => {
     const caption = v.name.replace(/\.mp4$/i, '');
     return `<a href="${url}" target="_blank" rel="noopener"><div class="video-card"><video src="${url}" preload="metadata" controls playsinline></video><div class="caption">${caption}</div></div></a>`;
   }).join('');
+  // Total number of stored images across all date folders
+  const storedCount = getProcessedDateFolders().reduce((acc, d) => acc + listImagesForDate(d).length, 0);
   const body = `<!doctype html>
 <html lang="en">
   <head>
@@ -950,7 +952,7 @@ app.get('/', (req, res) => {
     </header>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
-      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored</button>
+      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored (${storedCount})</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
       <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
     </div>
@@ -1115,7 +1117,7 @@ app.get('/day/:ymd', (req, res) => {
     </header>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="false" class="tab">Live</button>
-      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="true" class="tab">Stored</button>
+      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="true" class="tab">Stored (${imgs.length})</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
       <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
     </div>
