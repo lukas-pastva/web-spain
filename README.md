@@ -15,6 +15,26 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
 - `PORT` — HTTP server port. Default: `8080`
 - `IMAGE_FORMAT` — `jpeg` (default) or `png`
 - `JPEG_QUALITY` — 0–100, only for `jpeg`. Default: `80`
+ - `CLIP_SELECTOR` — Optional CSS selector to capture only a specific element on the page (e.g., the embedded webcam iframe). Example: `iframe[src*="ipcamlive.com"]`.
+ - `CLIP_PADDING` — Optional integer pixels to expand the clip around the selected element. Default: `0`.
+ - `WAIT_FOR_SELECTOR_TIMEOUT_MS` — How long to wait for `CLIP_SELECTOR` to appear. Default: `30000`.
+ - `POST_NAV_WAIT_MS` — Extra delay after navigation to let the page paint before capture. Default: `1500`.
+
+### Capture only the video (iframe) region
+
+If your target page embeds the webcam inside an `<iframe>` (like IPCamLive), you can tell the service to capture only that element instead of the whole page:
+
+```
+docker run --rm \
+  -e TARGET_URL=https://www.algarapictures.com/webcam \
+  -e CLIP_SELECTOR='iframe[src*="ipcamlive.com"]' \
+  -e CLIP_PADDING=8 \
+  -p 8080:8080 \
+  -v "$(pwd)/images:/tmp/images" \
+  webcam-snapshot:local
+```
+
+The service waits for the element to be visible and then screenshots only that region (including the live video pixels rendered inside the iframe). If the selector doesn’t appear within the timeout, it falls back to a regular screenshot of the page.
 
 ## Run locally with Docker
 

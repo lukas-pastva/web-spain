@@ -11,6 +11,13 @@ const OUTPUT_DIR = process.env.OUTPUT_DIR || '/tmp/images';
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
 
+// Optional: capture only a specific element (e.g., the webcam iframe)
+// Example: CLIP_SELECTOR='iframe[src*="ipcamlive.com"]'
+const CLIP_SELECTOR = process.env.CLIP_SELECTOR || '';
+const CLIP_PADDING = parseInt(process.env.CLIP_PADDING || '0', 10); // px around the element
+const WAIT_FOR_SELECTOR_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_SELECTOR_TIMEOUT_MS || '30000', 10);
+const POST_NAV_WAIT_MS = parseInt(process.env.POST_NAV_WAIT_MS || '1500', 10); // small delay to allow paint
+
 // Ensure output directory exists
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
@@ -62,6 +69,9 @@ async function captureOnce() {
     );
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
     await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60_000 });
+    if (POST_NAV_WAIT_MS > 0) {
+      await page.waitForTimeout(POST_NAV_WAIT_MS);
+    }
 
     const ts = nowIsoNoColons();
     const fileBase = `webcam-${ts}`;
@@ -71,7 +81,35 @@ async function captureOnce() {
       ? { path: filePath, type: 'png' }
       : { path: filePath, type: 'jpeg', quality: Math.max(0, Math.min(100, JPEG_QUALITY)) };
 
-    await page.screenshot(shotOptions);
+    let clipped = false;
+    if (CLIP_SELECTOR) {
+      try {
+        await page.waitForSelector(CLIP_SELECTOR, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS, visible: true });
+        const el = await page.$(CLIP_SELECTOR);
+        if (!el) throw new Error('element not found after waitForSelector');
+
+        if (CLIP_PADDING > 0) {
+          const box = await el.boundingBox();
+          if (!box) throw new Error('no bounding box for element');
+          const clip = {
+            x: Math.max(0, Math.floor(box.x - CLIP_PADDING)),
+            y: Math.max(0, Math.floor(box.y - CLIP_PADDING)),
+            width: Math.ceil(box.width + CLIP_PADDING * 2),
+            height: Math.ceil(box.height + CLIP_PADDING * 2),
+          };
+          await page.screenshot({ ...shotOptions, clip });
+        } else {
+          await el.screenshot(shotOptions);
+        }
+        clipped = true;
+      } catch (e) {
+        console.warn(`[capture] CLIP_SELECTOR failed: ${e && e.message ? e.message : e}. Falling back to full-page viewport screenshot.`);
+      }
+    }
+
+    if (!clipped) {
+      await page.screenshot(shotOptions);
+    }
     await page.close();
 
     console.log(`[capture] Saved ${filePath}`);
@@ -175,4 +213,3 @@ function shutdown(signal) {
     .finally(() => process.exit(0));
 }
 ['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, () => shutdown(sig)));
-
