@@ -10,7 +10,6 @@ const TARGET_URL = process.env.TARGET_URL || 'https://www.algarapictures.com/web
 const CAPTURE_INTERVAL_MS = parseInt(process.env.CAPTURE_INTERVAL_MS || '300000', 10); // default 5 minutes
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/tmp/images';
 const VIDEOS_DIR = path.join(OUTPUT_DIR, 'videos');
-const PROCESSED_DIR = path.join(OUTPUT_DIR, 'processed');
 const TMP_DIR = path.join(OUTPUT_DIR, '.tmp');
 const FULL_VIDEO_NAME = process.env.FULL_VIDEO_NAME || 'full.mp4';
 const FULL_VIDEO_PATH = path.join(VIDEOS_DIR, FULL_VIDEO_NAME);
@@ -47,7 +46,6 @@ const WAIT_FOR_PLAYING_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_PLAYING_TIMEOU
 // Ensure output directories exist
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 try { fs.mkdirSync(VIDEOS_DIR, { recursive: true }); } catch (_) {}
-try { fs.mkdirSync(PROCESSED_DIR, { recursive: true }); } catch (_) {}
 try { fs.mkdirSync(TMP_DIR, { recursive: true }); } catch (_) {}
 
 // Date helpers
@@ -60,37 +58,16 @@ function ymdFromMs(ms) {
 }
 function ymdToday() { return ymdFromMs(Date.now()); }
 
-// List raw images in OUTPUT_DIR root (not recursive)
-function listRootImages() {
+// Discover date-named folders under OUTPUT_DIR (YYYY-MM-DD)
+function getDateFolders(limit) {
   try {
-    const names = fs.readdirSync(OUTPUT_DIR);
-    const out = [];
-    for (const name of names) {
-      if (name.startsWith('.') || name === 'videos' || name === 'processed') continue;
-      const full = path.join(OUTPUT_DIR, name);
-      let st;
-      try { st = fs.statSync(full); } catch (_) { continue; }
-      if (!st.isFile()) continue;
-      const low = name.toLowerCase();
-      if (!(low.endsWith('.jpg') || low.endsWith('.jpeg') || low.endsWith('.png'))) continue;
-      out.push({ name, full, stat: st });
-    }
-    out.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs); // ascending chronological
-    return out;
-  } catch (e) {
-    return [];
-  }
-}
-
-// Group images by YYYY-MM-DD (based on mtime)
-function groupImagesByDate(files) {
-  const map = new Map();
-  for (const f of files) {
-    const key = ymdFromMs(f.stat.mtimeMs);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(f);
-  }
-  return map;
+    const names = fs.readdirSync(OUTPUT_DIR, { withFileTypes: true });
+    const dates = names
+      .filter(d => d.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(d.name))
+      .map(d => d.name)
+      .sort((a,b) => b.localeCompare(a)); // newest first
+    return typeof limit === 'number' ? dates.slice(0, Math.max(0, limit)) : dates;
+  } catch (_) { return []; }
 }
 
 function videoPathForDate(ymd) {
@@ -169,32 +146,16 @@ async function generateVideoForDate(ymd, files) {
   return ok;
 }
 
-function moveFilesToProcessed(ymd, files) {
-  const destDir = path.join(PROCESSED_DIR, ymd);
-  ensureDir(destDir);
-  for (const f of files) {
-    try {
-      const dest = path.join(destDir, f.name);
-      fs.renameSync(f.full, dest);
-    } catch (e) {
-      // best-effort; continue
-    }
-  }
-  console.log(`[archive] Moved ${files.length} files to ${destDir}`);
-}
-
 async function processUnarchivedDays() {
   const today = ymdToday();
-  const files = listRootImages();
-  const map = groupImagesByDate(files);
-  for (const [ymd, arr] of map.entries()) {
+  // For each date-named folder (except today), ensure a video exists.
+  const dates = getDateFolders();
+  for (const ymd of dates) {
     if (ymd >= today) continue; // only process days strictly before today
-    let created = false;
     if (!videoExistsForDate(ymd)) {
-      try { created = await generateVideoForDate(ymd, arr); } catch (_) { created = false; }
+      const files = listImagesForDate(ymd);
+      try { await generateVideoForDate(ymd, files); } catch (_) { /* ignore */ }
     }
-    // Move images to processed regardless of video success to avoid piling up
-    moveFilesToProcessed(ymd, arr);
   }
 }
 
@@ -574,7 +535,9 @@ async function captureOnce(options = {}) {
 
     const ts = nowIsoNoColons();
     const fileBase = `webcam-${ts}`;
-    const filePath = path.join(OUTPUT_DIR, `${fileBase}.${IMAGE_FORMAT === 'png' ? 'png' : 'jpg'}`);
+    const todayDir = path.join(OUTPUT_DIR, ymdToday());
+    ensureDir(todayDir);
+    const filePath = path.join(todayDir, `${fileBase}.${IMAGE_FORMAT === 'png' ? 'png' : 'jpg'}`);
 
     const shotOptions = IMAGE_FORMAT === 'png'
       ? { path: filePath, type: 'png' }
@@ -659,11 +622,12 @@ function scheduleFullMergeAt1am() {
 
 function getLatestImagePath() {
   try {
-    const files = fs.readdirSync(OUTPUT_DIR)
+    const dir = path.join(OUTPUT_DIR, ymdToday());
+    const files = fs.readdirSync(dir)
       .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png'))
-      .map(name => ({ name, full: path.join(OUTPUT_DIR, name), stat: fs.statSync(path.join(OUTPUT_DIR, name)) }))
+      .map(name => ({ name, full: path.join(dir, name), stat: fs.statSync(path.join(dir, name)) }))
       .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-    return files.length ? files[0].name : null;
+    return files.length ? path.join(ymdToday(), files[0].name) : null;
   } catch (e) {
     return null;
   }
@@ -720,9 +684,10 @@ async function mergeDailyVideosIntoFull() {
 // List stored images (newest first). Optional limit
 function getImagesSorted(limit) {
   try {
-    const files = fs.readdirSync(OUTPUT_DIR)
+    const dir = path.join(OUTPUT_DIR, ymdToday());
+    const files = fs.readdirSync(dir)
       .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png'))
-      .map(name => ({ name, full: path.join(OUTPUT_DIR, name), stat: fs.statSync(path.join(OUTPUT_DIR, name)) }))
+      .map(name => ({ name, full: path.join(dir, name), stat: fs.statSync(path.join(dir, name)) }))
       .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
     return typeof limit === 'number' ? files.slice(0, Math.max(0, limit)) : files;
   } catch (e) {
@@ -730,21 +695,14 @@ function getImagesSorted(limit) {
   }
 }
 
-// Past-days folders (processed/YYYY-MM-DD)
-function getProcessedDateFolders(limit) {
-  try {
-    const names = fs.readdirSync(PROCESSED_DIR, { withFileTypes: true });
-    const dates = names
-      .filter(d => d.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(d.name))
-      .map(d => d.name)
-      .sort((a,b) => b.localeCompare(a)); // newest first
-    return typeof limit === 'number' ? dates.slice(0, Math.max(0, limit)) : dates;
-  } catch (_) { return []; }
+// Date folders under OUTPUT_DIR (YYYY-MM-DD)
+function getProcessedDateFolders(limit) { // kept name for compatibility in UI
+  return getDateFolders(limit);
 }
 
 function listImagesForDate(ymd) {
   try {
-    let baseDir = ymd === ymdToday() ? OUTPUT_DIR : path.join(PROCESSED_DIR, ymd);
+    const baseDir = path.join(OUTPUT_DIR, ymd);
     const files = fs.readdirSync(baseDir)
       .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png'))
       .map(name => ({ name, full: path.join(baseDir, name), stat: fs.statSync(path.join(baseDir, name)) }))
@@ -757,7 +715,7 @@ function getCoverForDate(ymd) {
   const imgs = listImagesForDate(ymd);
   if (!imgs.length) return null;
   const f = imgs[0];
-  const rel = ymd === ymdToday() ? '' : `/processed/${ymd}`;
+  const rel = `/${ymd}`;
   return { url: `/images${rel}/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`, count: imgs.length };
 }
 
@@ -778,10 +736,28 @@ app.get('/readyz', (req, res) => res.status(200).send('READY'));
 // Static serving of captured images
 app.use('/images', express.static(OUTPUT_DIR, { maxAge: '60s', index: false }));
 
+// API: Reprocess/regenerate daily video for a specific date
+app.post('/api/reprocess/:ymd', async (req, res) => {
+  try {
+    const ymd = String(req.params.ymd || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      return res.status(400).json({ success: false, error: 'Bad date' });
+    }
+    const imgs = listImagesForDate(ymd);
+    if (!imgs.length) {
+      return res.status(404).json({ success: false, error: 'No images for date' });
+    }
+    const ok = await generateVideoForDate(ymd, imgs);
+    return res.status(200).json({ success: !!ok });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+  }
+});
+
 // Simple index page that shows the latest screenshot
 app.get('/', (req, res) => {
   const latest = getLatestImagePath();
-  const latestUrl = latest ? `/images/${encodeURIComponent(latest)}` : null;
+  const latestUrl = latest ? `/images/${latest}` : null;
   const all = getImagesSorted(100);
   const vids = getDailyVideosSorted().slice(0, 30);
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
@@ -790,7 +766,7 @@ app.get('/', (req, res) => {
   // Build folder tiles for Stored tab: Today + past dates
   const todayDate = ymdToday();
   const todayCover = getCoverForDate(todayDate);
-  const pastDates = getProcessedDateFolders();
+  const pastDates = getProcessedDateFolders().filter(d => d !== todayDate);
   const folderTile = (date) => {
     const cover = getCoverForDate(date);
     const count = cover ? cover.count : 0;
@@ -983,15 +959,14 @@ app.get('/day/:ymd', (req, res) => {
   const ymd = String(req.params.ymd || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return res.status(400).send('Bad date');
   const imgs = listImagesForDate(ymd);
-  const rel = ymd === ymdToday() ? '' : `/processed/${ymd}`;
   const latest = getLatestImagePath();
-  const latestUrl = latest ? `/images/${encodeURIComponent(latest)}` : null;
+  const latestUrl = latest ? `/images/${latest}` : null;
   const vids = getDailyVideosSorted().slice(0, 30);
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
   const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
   const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
   const grid = imgs.map(f => {
-    const url = `/images${rel}/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
+    const url = `/images/${ymd}/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
     const caption = new Date(f.stat.mtimeMs).toLocaleString();
     return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${f.name}" loading="lazy" /><div class="caption">${caption}</div></a>`;
   }).join('');
@@ -1037,6 +1012,9 @@ app.get('/day/:ymd', (req, res) => {
       .videos .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .full video { width: 100%; height: auto; display: block; background: #000; }
       .hint { color: var(--muted); font-size: 0.9em; margin: 0 0 8px; }
+      .actions { margin: 8px 0 16px; display: flex; gap: 8px; align-items: center; }
+      .btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+      .btn[disabled] { opacity: 0.6; cursor: progress; }
     </style>
     <script>
       (function() {
@@ -1054,6 +1032,21 @@ app.get('/day/:ymd', (req, res) => {
         else if (mql && mql.addListener) { mql.addListener(function() { if (mode === 'auto') applyTheme(mode); }); }
         window.addEventListener('DOMContentLoaded', updateUi);
       })();
+    </script>
+    <script>
+      function reprocessDay(ymd) {
+        var btn = document.getElementById('reprocess-btn');
+        var status = document.getElementById('reprocess-status');
+        if (btn) btn.disabled = true;
+        if (status) status.textContent = 'Reprocessing…';
+        fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            if (status) status.textContent = data && data.success ? 'Done.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (btn) btn.disabled = false;
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; if (btn) btn.disabled = false; });
+      }
     </script>
     <script>
       (function() {
@@ -1115,6 +1108,7 @@ app.get('/day/:ymd', (req, res) => {
         ${imgs.length ? `<div class="thumbs">${grid}</div>` : '<p>No images for this date.</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
+        <div class="actions"><button id="reprocess-btn" class="btn" onclick="reprocessDay('${ymd}')">Reprocess ${ymd} video</button><span id="reprocess-status" class="meta"></span></div>
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
