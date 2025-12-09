@@ -1093,23 +1093,7 @@ app.get('/', (req, res) => {
   res.status(200).send(body);
 });
 
-// On-demand capture endpoint with optional mode
-app.get('/capture', async (req, res) => {
-  if (capturing) {
-    return res.status(409).send('Capture already in progress');
-  }
-  const mode = String(req.query.mode || '').toLowerCase();
-  const playThenCapture = mode === 'play' || mode === 'playfirst' || mode === 'play-first';
-  const playThenFullscreen = mode === 'playfs' || mode === 'play-fullscreen' || mode === 'playfs-first';
-  try {
-    const file = await captureOnce({ playThenCapture, playThenFullscreen });
-    if (!file) return res.status(500).send('Capture failed');
-    // Redirect back to home where the latest screenshot is shown
-    res.redirect(303, '/');
-  } catch (e) {
-    res.status(500).send('Capture error');
-  }
-});
+// Manual capture endpoint removed; only scheduled captures are supported.
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://0.0.0.0:${PORT}`);
