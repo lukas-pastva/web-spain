@@ -900,6 +900,12 @@ app.get('/', (req, res) => {
       .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
       .icon-btn:hover { filter: brightness(0.98); }
       .icon-btn:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      /* Tabs */
+      .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-top: 12px; }
+      .tab { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-top-left-radius: 6px; border-top-right-radius: 6px; cursor: pointer; }
+      .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); border-color: var(--button-border); border-bottom-color: var(--bg); }
+      .tab:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      .tabpanels { border: 1px solid var(--button-border); border-top: none; padding: 12px; border-radius: 0 6px 6px 6px; }
     </style>
     <script>
       (function() {
@@ -936,6 +942,45 @@ app.get('/', (req, res) => {
         window.addEventListener('DOMContentLoaded', updateUi);
       })();
     </script>
+    <script>
+      (function() {
+        var KEY = 'home-active-tab';
+        var order = ['tab-live','tab-stored','tab-videos'];
+        function select(tabId) {
+          order.forEach(function(id) {
+            var btn = document.getElementById(id);
+            var panel = document.getElementById('panel-' + id.split('-')[1]);
+            var active = id === tabId;
+            if (btn) btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            if (panel) {
+              panel.hidden = !active;
+              panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+            }
+          });
+          try { localStorage.setItem(KEY, tabId); } catch (_) {}
+        }
+        function init() {
+          var saved = 'tab-live';
+          try { saved = localStorage.getItem(KEY) || 'tab-live'; } catch (_) {}
+          if (!document.getElementById(saved)) saved = 'tab-live';
+          order.forEach(function(id, idx) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('click', function() { select(id); });
+            el.addEventListener('keydown', function(e) {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                var next = order[(idx + (e.key === 'ArrowRight' ? 1 : -1) + order.length) % order.length];
+                var ne = document.getElementById(next);
+                if (ne) { ne.focus(); select(next); }
+              }
+            });
+          });
+          select(saved);
+        }
+        window.addEventListener('DOMContentLoaded', init);
+      })();
+    </script>
   </head>
   <body>
     <header>
@@ -953,20 +998,22 @@ app.get('/', (req, res) => {
         <a class="button" href="/capture?mode=playfs">Capture now (play + fullscreen)</a>
       </div>
     </header>
-    <main class="rows">
-      <section class="row">
-        <h2>Live Snapshot</h2>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
+      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored</button>
+      <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
+    </div>
+    <div class="tabpanels">
+      <section id="panel-live" class="tabpanel" role="tabpanel" aria-labelledby="tab-live" aria-hidden="false">
         ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
       </section>
-      <section class="row">
-        <h2>Stored Snapshots</h2>
+      <section id="panel-stored" class="tabpanel" role="tabpanel" aria-labelledby="tab-stored" hidden aria-hidden="true">
         ${all.length ? `<div class="thumbs">${thumbsHtml}</div>` : '<p>No stored snapshots yet.</p>'}
       </section>
-      <section class="row">
-        <h2>Daily Videos (30 fps)</h2>
+      <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
       </section>
-    </main>
+    </div>
   </body>
 </html>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
