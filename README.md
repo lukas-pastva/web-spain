@@ -21,22 +21,27 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
  - `WAIT_FOR_SELECTOR_TIMEOUT_MS` — How long to wait for `CLIP_SELECTOR` to appear. Default: `30000`.
 - `POST_NAV_WAIT_MS` — Extra delay after navigation to let the page paint before capture. Default: `1500`.
  - `NAV_WAIT_UNTIL` — How Puppeteer waits for navigation to finish: `load`, `domcontentloaded` (default), `networkidle0`, or `networkidle2`. For streaming pages, `domcontentloaded` is recommended.
+ - `MAKE_CLIP_FULLSCREEN` — When `true` (default), promotes the selected element to fullscreen before capturing. Produces a full-viewport image of the video instead of a smaller cropped box.
+ - `FULLSCREEN_SELECTOR` — Optional selector to use for fullscreen promotion. If not set, `CLIP_SELECTOR` is used.
+ - `FULLSCREEN_BG` — Background color to use behind the fullscreened element. Default: `#000`.
+ - `FULLSCREEN_DELAY_MS` — Small delay after fullscreening to allow layout to settle. Default: `400`.
 
-### Capture only the video (iframe) region
+### Capture only the video (iframe) region (fullscreen)
 
-If your target page embeds the webcam inside an `<iframe>` (like IPCamLive), you can tell the service to capture only that element instead of the whole page:
+If your target page embeds the webcam inside an `<iframe>` (like IPCamLive), you can tell the service to capture only that element. By default, the service will also promote that element to fullscreen so the capture is a full-viewport image of the video:
 
 ```
 docker run --rm \
   -e TARGET_URL=https://www.algarapictures.com/webcam \
   -e CLIP_SELECTOR='iframe[src*="ipcamlive.com"]' \
+  -e MAKE_CLIP_FULLSCREEN=true \
   -e CLIP_PADDING=8 \
   -p 8080:8080 \
   -v "$(pwd)/images:/tmp/images" \
   webcam-snapshot:local
 ```
 
-The service waits for the element to be visible and then screenshots only that region (including the live video pixels rendered inside the iframe). If the selector doesn’t appear within the timeout, it falls back to a regular screenshot of the page.
+The service waits for the element to be visible, promotes it to fullscreen, and captures the viewport. If you prefer to keep the original embedded size, set `-e MAKE_CLIP_FULLSCREEN=false` and it will screenshot only that element’s box. If the selector doesn’t appear within the timeout, it falls back to a regular screenshot of the page.
 
 ## Run locally with Docker
 

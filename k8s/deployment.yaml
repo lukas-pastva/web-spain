@@ -32,6 +32,10 @@ spec:
               value: "8080"
             - name: TARGET_URL
               value: "https://www.algarapictures.com/webcam"
+            - name: CLIP_SELECTOR
+              value: "iframe[src*=\"ipcamlive.com\"]"
+            - name: MAKE_CLIP_FULLSCREEN
+              value: "true"
             - name: CAPTURE_INTERVAL_MS
               value: "60000" # 60s
             - name: OUTPUT_DIR
@@ -77,4 +81,3 @@ spec:
     - port: 80
       targetPort: 8080
       nodePort: 30080
-

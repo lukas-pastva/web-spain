@@ -14,6 +14,12 @@ const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
 // Optional: capture only a specific element (e.g., the webcam iframe)
 // Example: CLIP_SELECTOR='iframe[src*="ipcamlive.com"]'
 const CLIP_SELECTOR = process.env.CLIP_SELECTOR || '';
+// Optionally, promote a selector to fullscreen before capture. If FULLSCREEN_SELECTOR is not set,
+// the CLIP_SELECTOR will be used. Enabled by default to better match "capture the video on fullscreen".
+const FULLSCREEN_SELECTOR = process.env.FULLSCREEN_SELECTOR || '';
+const MAKE_CLIP_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.MAKE_CLIP_FULLSCREEN || 'true');
+const FULLSCREEN_BG = process.env.FULLSCREEN_BG || '#000';
+const FULLSCREEN_DELAY_MS = parseInt(process.env.FULLSCREEN_DELAY_MS || '400', 10);
 const CLIP_PADDING = parseInt(process.env.CLIP_PADDING || '0', 10); // px around the element
 const WAIT_FOR_SELECTOR_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_SELECTOR_TIMEOUT_MS || '30000', 10);
 const POST_NAV_WAIT_MS = parseInt(process.env.POST_NAV_WAIT_MS || '1500', 10); // small delay to allow paint
@@ -83,6 +89,57 @@ async function captureOnce() {
       await sleep(POST_NAV_WAIT_MS);
     }
 
+    // Try to promote the target element (webcam iframe) to fullscreen to capture only the video
+    // at a full-viewport resolution. This is especially useful when the page constrains the
+    // iframe to a smaller box.
+    let fullscreenApplied = false;
+    const fullscreenTargetSelector = (FULLSCREEN_SELECTOR || CLIP_SELECTOR || '').trim();
+    if (fullscreenTargetSelector && MAKE_CLIP_FULLSCREEN) {
+      try {
+        await page.waitForSelector(fullscreenTargetSelector, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS, visible: true });
+        fullscreenApplied = await page.evaluate((sel, bg) => {
+          const el = document.querySelector(sel);
+          if (!el) return false;
+          // Hide everything except the element and its ancestor chain
+          const ancestors = new Set();
+          let n = el;
+          while (n) { ancestors.add(n); n = n.parentElement; }
+          const body = document.body;
+          for (const child of Array.from(body.children)) {
+            if (!ancestors.has(child)) {
+              child.style.setProperty('display', 'none', 'important');
+              child.style.setProperty('visibility', 'hidden', 'important');
+            }
+          }
+          document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+          body.style.setProperty('margin', '0', 'important');
+          body.style.setProperty('padding', '0', 'important');
+
+          // Make the element itself fixed and cover the viewport
+          const s = el.style;
+          s.setProperty('position', 'fixed', 'important');
+          s.setProperty('top', '0', 'important');
+          s.setProperty('left', '0', 'important');
+          s.setProperty('width', '100vw', 'important');
+          s.setProperty('height', '100vh', 'important');
+          s.setProperty('max-width', '100vw', 'important');
+          s.setProperty('max-height', '100vh', 'important');
+          s.setProperty('margin', '0', 'important');
+          s.setProperty('padding', '0', 'important');
+          s.setProperty('transform', 'none', 'important');
+          s.setProperty('z-index', '2147483647', 'important');
+          s.setProperty('background', bg || '#000', 'important');
+          return true;
+        }, fullscreenTargetSelector, FULLSCREEN_BG);
+        if (fullscreenApplied && FULLSCREEN_DELAY_MS > 0) {
+          await sleep(FULLSCREEN_DELAY_MS);
+        }
+      } catch (e) {
+        // If fullscreen attempt fails, continue with normal clipping logic
+        fullscreenApplied = false;
+      }
+    }
+
     const ts = nowIsoNoColons();
     const fileBase = `webcam-${ts}`;
     const filePath = path.join(OUTPUT_DIR, `${fileBase}.${IMAGE_FORMAT === 'png' ? 'png' : 'jpg'}`);
@@ -92,7 +149,7 @@ async function captureOnce() {
       : { path: filePath, type: 'jpeg', quality: Math.max(0, Math.min(100, JPEG_QUALITY)) };
 
     let clipped = false;
-    if (CLIP_SELECTOR) {
+    if (!fullscreenApplied && CLIP_SELECTOR) {
       try {
         await page.waitForSelector(CLIP_SELECTOR, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS, visible: true });
         const el = await page.$(CLIP_SELECTOR);
@@ -119,7 +176,9 @@ async function captureOnce() {
       }
     }
 
-    if (!clipped) {
+    if (fullscreenApplied) {
+      await page.screenshot(shotOptions);
+    } else if (!clipped) {
       await page.screenshot(shotOptions);
     }
     await page.close();
