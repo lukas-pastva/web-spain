@@ -11,8 +11,8 @@ RUN if [ -f package-lock.json ]; then \
       npm install --omit=dev; \
     fi
 
-# Copy application source
-COPY src ./src
+# Copy application source (context is src/)
+COPY . .
 
 # Non-root user provided by the Puppeteer image
 USER pptruser
@@ -22,4 +22,4 @@ ENV NODE_ENV=production \
     OUTPUT_DIR=/tmp/images
 
 EXPOSE 8080
-CMD ["node", "src/server.js"]
+CMD ["node", "server.js"]

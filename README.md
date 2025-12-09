@@ -24,7 +24,7 @@ Build and run (images will be written to a local folder):
 # From repository root
 export IMAGE=webcam-snapshot:local
 
-docker build -f src/Dockerfile -t "$IMAGE" .
+docker build -t "$IMAGE" src
 mkdir -p ./images
 
 docker run --rm \
@@ -47,7 +47,7 @@ Open http://localhost:8080 to see the latest screenshot, and http://localhost:80
 export REG=your-registry
 export IMG=$REG/webcam-snapshot:latest
 
-docker build -f src/Dockerfile -t "$IMG" .
+docker build -t "$IMG" src
 docker push "$IMG"
 # Edit k8s/deployment.yaml and set image: $IMG
 ```
