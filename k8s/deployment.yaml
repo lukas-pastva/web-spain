@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: webcam-images-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webcam-snapshot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webcam-snapshot
+  template:
+    metadata:
+      labels:
+        app: webcam-snapshot
+    spec:
+      containers:
+        - name: app
+          image: your-registry/webcam-snapshot:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PORT
+              value: "8080"
+            - name: TARGET_URL
+              value: "https://www.algarapictures.com/webcam"
+            - name: CAPTURE_INTERVAL_MS
+              value: "60000" # 60s
+            - name: OUTPUT_DIR
+              value: "/tmp/images"
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: images
+              mountPath: /tmp/images
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: images
+          persistentVolumeClaim:
+            claimName: webcam-images-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webcam-snapshot
+spec:
+  type: NodePort
+  selector:
+    app: webcam-snapshot
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080
+
