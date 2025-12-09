@@ -74,7 +74,7 @@ docker run --rm \
   "$IMAGE"
 ```
 
-Open http://localhost:8080 to see the UI. You can browse the raw files under http://localhost:8080/images/.
+Open http://localhost:8080 to see the UI. The UI includes tabs for Live, Stored, Videos, and Full-time.
 
 ### Jittered scheduling
 

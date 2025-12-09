@@ -910,7 +910,6 @@ app.get('/', (req, res) => {
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
       <div class="meta">Interval: <code>${CAPTURE_INTERVAL_MS} ms</code> • Output: <code>${OUTPUT_DIR}</code></div>
       <div class="grid">
-        <a class="button" href="/images/" target="_blank">Browse images</a>
         <a class="button" href="/healthz" target="_blank">Health</a>
       </div>
     </header>
