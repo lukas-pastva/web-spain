@@ -730,6 +730,37 @@ function getImagesSorted(limit) {
   }
 }
 
+// Past-days folders (processed/YYYY-MM-DD)
+function getProcessedDateFolders(limit) {
+  try {
+    const names = fs.readdirSync(PROCESSED_DIR, { withFileTypes: true });
+    const dates = names
+      .filter(d => d.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(d.name))
+      .map(d => d.name)
+      .sort((a,b) => b.localeCompare(a)); // newest first
+    return typeof limit === 'number' ? dates.slice(0, Math.max(0, limit)) : dates;
+  } catch (_) { return []; }
+}
+
+function listImagesForDate(ymd) {
+  try {
+    let baseDir = ymd === ymdToday() ? OUTPUT_DIR : path.join(PROCESSED_DIR, ymd);
+    const files = fs.readdirSync(baseDir)
+      .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png'))
+      .map(name => ({ name, full: path.join(baseDir, name), stat: fs.statSync(path.join(baseDir, name)) }))
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+    return files;
+  } catch (e) { return []; }
+}
+
+function getCoverForDate(ymd) {
+  const imgs = listImagesForDate(ymd);
+  if (!imgs.length) return null;
+  const f = imgs[0];
+  const rel = ymd === ymdToday() ? '' : `/processed/${ymd}`;
+  return { url: `/images${rel}/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`, count: imgs.length };
+}
+
 // Kick off an immediate first capture shortly after start, then schedule with jitter
 setTimeout(() => runCaptureThenSchedule(), 5000);
 // Schedule daily full-time video merge at ~1am local time
@@ -756,11 +787,20 @@ app.get('/', (req, res) => {
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
   const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
   const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
-  const thumbsHtml = all.map(f => {
-    const url = `/images/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
-    const caption = new Date(f.stat.mtimeMs).toLocaleString();
-    return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${f.name}" loading="lazy" /><div class="caption">${caption}</div></a>`;
-  }).join('');
+  // Build folder tiles for Stored tab: Today + past dates
+  const todayDate = ymdToday();
+  const todayCover = getCoverForDate(todayDate);
+  const pastDates = getProcessedDateFolders();
+  const folderTile = (date) => {
+    const cover = getCoverForDate(date);
+    const count = cover ? cover.count : 0;
+    const coverHtml = cover ? `<img src="${cover.url}" alt="${date}" loading="lazy" />` : `<div class="empty">No images</div>`;
+    return `<a class="folder" href="/day/${date}" aria-label="Open ${date}">${coverHtml}<div class="folder-caption"><span class="name">${date}</span><span class="count">${count}</span></div></a>`;
+  };
+  const foldersHtml = [todayCover ? folderTile(todayDate) : '']
+    .concat(pastDates.map(d => folderTile(d)))
+    .filter(Boolean)
+    .join('');
   const videosHtml = vids.map(v => {
     const url = `/images/videos/${encodeURIComponent(v.name)}?v=${Math.floor(v.stat.mtimeMs)}`;
     const caption = v.name.replace(/\.mp4$/i, '');
@@ -803,10 +843,13 @@ app.get('/', (req, res) => {
       .grid { display: grid; gap: 16px; }
       .rows { display: grid; gap: 24px; }
       .row h2 { margin: 0 0 8px; font-size: 1.15em; color: var(--fg); }
-      .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-      .thumbs a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
-      .thumbs img { width: 100%; height: 120px; object-fit: cover; display: block; background: #000; }
-      .thumbs .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+      .folder { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
+      .folder img { width: 100%; height: 140px; object-fit: cover; display: block; background: #000; }
+      .folder .empty { width: 100%; height: 140px; display: grid; place-items: center; color: var(--muted); background: var(--code-bg); }
+      .folder-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.95em; padding: 8px 10px; }
+      .folder-caption .name { font-weight: 600; }
+      .folder-caption .count { color: var(--muted); font-variant-numeric: tabular-nums; }
       .videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
       .videos a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
       .videos video { width: 100%; height: 150px; background: #000; display: block; object-fit: cover; }
@@ -920,7 +963,7 @@ app.get('/', (req, res) => {
         ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
       </section>
       <section id="panel-stored" class="tabpanel" role="tabpanel" aria-labelledby="tab-stored" hidden aria-hidden="true">
-        ${all.length ? `<div class="thumbs">${thumbsHtml}</div>` : '<p>No stored snapshots yet.</p>'}
+        ${foldersHtml ? `<div class="folders">${foldersHtml}</div>` : '<p>No stored snapshots yet.</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
@@ -929,6 +972,67 @@ app.get('/', (req, res) => {
         ${fullUrl ? `<div class="full"><video src="${fullUrl}" controls preload="metadata" playsinline></video></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
       </section>
     </div>
+  </body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.status(200).send(body);
+});
+
+// Day view: thumbnails for a specific YYYY-MM-DD
+app.get('/day/:ymd', (req, res) => {
+  const ymd = String(req.params.ymd || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return res.status(400).send('Bad date');
+  const imgs = listImagesForDate(ymd);
+  const rel = ymd === ymdToday() ? '' : `/processed/${ymd}`;
+  const grid = imgs.map(f => {
+    const url = `/images${rel}/${encodeURIComponent(f.name)}?v=${Math.floor(f.stat.mtimeMs)}`;
+    const caption = new Date(f.stat.mtimeMs).toLocaleString();
+    return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${f.name}" loading="lazy" /><div class="caption">${caption}</div></a>`;
+  }).join('');
+  const body = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Snapshots for ${ymd}</title>
+    <style>
+      :root { --bg:#fff; --fg:#111; --muted:#666; --border:#ddd; --button-bg:#fff; --button-fg:#333; --button-border:#ccc; --code-bg:#f6f8fa; }
+      [data-theme="dark"] { --bg:#0f1115; --fg:#e6e6e6; --muted:#a0a0a0; --border:#2a2f3a; --button-bg:#171a21; --button-fg:#e6e6e6; --button-border:#2a2f3a; --code-bg:#111827; }
+      html, body { background: var(--bg); color: var(--fg); }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+      header { display:flex; align-items:center; justify-content: space-between; gap:12px; margin-bottom: 16px; }
+      a.button { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); border-radius: 4px; text-decoration: none; color: var(--button-fg); background: var(--button-bg); }
+      .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+      .thumbs a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
+      .thumbs img { width: 100%; height: 120px; object-fit: cover; display: block; background: #000; }
+      .thumbs .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* theme btn */
+      .icon-btn { appearance:none; border:1px solid var(--button-border); background:var(--button-bg); color:var(--button-fg); border-radius:999px; width:36px; height:36px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; }
+      .icon-btn:focus { outline: 2px solid #5b9cff; outline-offset:2px; }
+    </style>
+    <script>
+      (function() {
+        var KEY = 'theme-preference';
+        var mql = window.matchMedia('(prefers-color-scheme: dark)');
+        function apply(mode){ var eff = mode==='auto' ? (mql.matches?'dark':'light') : mode; document.documentElement.setAttribute('data-theme', eff); }
+        var mode = (function(){ try { return localStorage.getItem(KEY) || 'auto'; } catch(_) { return 'auto'; } })();
+        apply(mode);
+        function icon(m){ return m==='light'?'☀️':(m==='dark'?'🌙':'🖥️'); }
+        function title(m){ return 'Theme: '+(m.charAt(0).toUpperCase()+m.slice(1)); }
+        function upd(){ var b=document.getElementById('theme-btn'); var i=document.getElementById('theme-icon'); if(b) b.title=title(mode); if(i) i.textContent=icon(mode); }
+        window.__cycleTheme = function(){ mode = mode==='auto'?'light':(mode==='light'?'dark':'auto'); try{localStorage.setItem(KEY,mode);}catch(_){} apply(mode); upd(); };
+        if (mql && mql.addEventListener) mql.addEventListener('change', function(){ if(mode==='auto') apply(mode); });
+        else if (mql && mql.addListener) mql.addListener(function(){ if(mode==='auto') apply(mode); });
+        window.addEventListener('DOMContentLoaded', upd);
+      })();
+    </script>
+  </head>
+  <body>
+    <header>
+      <h1>Snapshots for ${ymd}</h1>
+      <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
+    </header>
+    ${imgs.length ? `<div class="thumbs">${grid}</div>` : '<p>No images for this date.</p>'}
   </body>
 </html>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
