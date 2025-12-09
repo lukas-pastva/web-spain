@@ -16,15 +16,21 @@ A tiny Node/Express + Puppeteer service that periodically captures screenshots o
 - `PORT` — HTTP server port. Default: `8080`
 - `IMAGE_FORMAT` — `jpeg` (default) or `png`
 - `JPEG_QUALITY` — 0–100, only for `jpeg`. Default: `80`
+ - `USER_DATA_DIR` — Optional path for a persistent Chromium profile. If set (e.g. to `/tmp/puppeteer` mounted on a volume), cookie/consent choices persist across container restarts.
  - `CLIP_SELECTOR` — Optional CSS selector to capture only a specific element on the page (e.g., the embedded webcam iframe). Example: `iframe[src*="ipcamlive.com"]`.
  - `CLIP_PADDING` — Optional integer pixels to expand the clip around the selected element. Default: `0`.
  - `WAIT_FOR_SELECTOR_TIMEOUT_MS` — How long to wait for `CLIP_SELECTOR` to appear. Default: `30000`.
 - `POST_NAV_WAIT_MS` — Extra delay after navigation to let the page paint before capture. Default: `1500`.
  - `NAV_WAIT_UNTIL` — How Puppeteer waits for navigation to finish: `load`, `domcontentloaded` (default), `networkidle0`, or `networkidle2`. For streaming pages, `domcontentloaded` is recommended.
+ - `AUTO_CONSENT` — When `true` (default), attempts to auto-accept common cookie/consent banners (Google Funding Choices, site cookie bars) so the webcam isn't obscured. Timeout controlled by `CONSENT_TIMEOUT_MS`.
+ - `CONSENT_TIMEOUT_MS` — How long to keep trying to handle consent banners. Default: `8000`.
  - `MAKE_CLIP_FULLSCREEN` — When `true` (default), promotes the selected element to fullscreen before capturing. Produces a full-viewport image of the video instead of a smaller cropped box.
  - `FULLSCREEN_SELECTOR` — Optional selector to use for fullscreen promotion. If not set, `CLIP_SELECTOR` is used.
  - `FULLSCREEN_BG` — Background color to use behind the fullscreened element. Default: `#000`.
  - `FULLSCREEN_DELAY_MS` — Small delay after fullscreening to allow layout to settle. Default: `400`.
+ - `VIEWPORT_WIDTH` — Browser viewport width in pixels. Default: `1920`.
+ - `VIEWPORT_HEIGHT` — Browser viewport height in pixels. Default: `1080`.
+ - `DEVICE_SCALE_FACTOR` — Pixel density multiplier for sharper output (e.g., `2` for “retina”-like). Default: `1`.
 
 ### Capture only the video (iframe) region (fullscreen)
 
@@ -42,6 +48,18 @@ docker run --rm \
 ```
 
 The service waits for the element to be visible, promotes it to fullscreen, and captures the viewport. If you prefer to keep the original embedded size, set `-e MAKE_CLIP_FULLSCREEN=false` and it will screenshot only that element’s box. If the selector doesn’t appear within the timeout, it falls back to a regular screenshot of the page.
+
+If you see a cookie/consent dialog, the service will try to automatically accept common consent prompts (Google Funding Choices) in both the page and any iframes. You can also persist the decision by using a Chromium profile via `USER_DATA_DIR` (see below).
+
+### Persist consent/cookies (optional)
+
+Set a persistent profile directory so consent/cookies survive restarts:
+
+```
+-e USER_DATA_DIR=/tmp/puppeteer
+```
+
+Mount that path to a volume in Docker/Kubernetes. This avoids re-consenting on every run.
 
 ## Run locally with Docker
 

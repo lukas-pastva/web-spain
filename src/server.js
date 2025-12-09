@@ -20,6 +20,9 @@ const FULLSCREEN_SELECTOR = process.env.FULLSCREEN_SELECTOR || '';
 const MAKE_CLIP_FULLSCREEN = /^(1|true|yes|on)$/i.test(process.env.MAKE_CLIP_FULLSCREEN || 'true');
 const FULLSCREEN_BG = process.env.FULLSCREEN_BG || '#000';
 const FULLSCREEN_DELAY_MS = parseInt(process.env.FULLSCREEN_DELAY_MS || '400', 10);
+// Handle consent/cookie banners automatically so capture isn't blocked
+const AUTO_CONSENT = /^(1|true|yes|on)$/i.test(process.env.AUTO_CONSENT || 'true');
+const CONSENT_TIMEOUT_MS = parseInt(process.env.CONSENT_TIMEOUT_MS || '8000', 10);
 const CLIP_PADDING = parseInt(process.env.CLIP_PADDING || '0', 10); // px around the element
 const WAIT_FOR_SELECTOR_TIMEOUT_MS = parseInt(process.env.WAIT_FOR_SELECTOR_TIMEOUT_MS || '30000', 10);
 const POST_NAV_WAIT_MS = parseInt(process.env.POST_NAV_WAIT_MS || '1500', 10); // small delay to allow paint
@@ -27,6 +30,11 @@ const POST_NAV_WAIT_MS = parseInt(process.env.POST_NAV_WAIT_MS || '1500', 10); /
 const NAV_WAIT_UNTIL = (process.env.NAV_WAIT_UNTIL || 'domcontentloaded'); // 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2'
 // Jitter settings so captures don't look like a strict cron
 const JITTER_MS = parseInt(process.env.JITTER_MS || '30000', 10); // ±30s by default
+
+// Viewport tuning (resolution and sharpness)
+const VIEWPORT_WIDTH = parseInt(process.env.VIEWPORT_WIDTH || '1920', 10);
+const VIEWPORT_HEIGHT = parseInt(process.env.VIEWPORT_HEIGHT || '1080', 10);
+const DEVICE_SCALE_FACTOR = parseFloat(process.env.DEVICE_SCALE_FACTOR || '1');
 
 // Ensure output directory exists
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -64,6 +72,10 @@ async function ensureBrowser() {
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
     launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
   }
+  // Persist session/cookies between runs if a user data dir is provided
+  if (process.env.USER_DATA_DIR) {
+    launchOptions.userDataDir = process.env.USER_DATA_DIR;
+  }
 
   browser = await puppeteer.launch(launchOptions);
   return browser;
@@ -72,6 +84,128 @@ async function ensureBrowser() {
 function nowIsoNoColons() {
   // Make filename friendly for most filesystems
   return new Date().toISOString().replace(/[:]/g, '-');
+}
+
+async function tryHandleConsent(page) {
+  if (!AUTO_CONSENT) return;
+  const deadline = Date.now() + Math.max(0, CONSENT_TIMEOUT_MS);
+  let accepted = false;
+  let bannerDismissed = false;
+
+  async function clickInContext(ctx, sel) {
+    try {
+      const el = await ctx.$(sel);
+      if (!el) return false;
+      await el.click({ delay: 10 });
+      return true;
+    } catch (_) {
+      try {
+        return await ctx.evaluate((s) => {
+          const e = document.querySelector(s);
+          if (!e) return false;
+          e.click();
+          return true;
+        }, sel);
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
+  const consentSelectors = [
+    'button.fc-cta-consent',
+    'button.fc-data-preferences-accept-all',
+    'button.fc-vendor-preferences-accept-all',
+    'button.fc-confirm-choices',
+    '.fc-consent-root button.fc-primary-button',
+  ];
+
+  // Fallback: search for common consent labels (English + Spanish minimal set)
+  const consentTextRegexes = [
+    /^(?:consent|accept|accept all|agree|allow|confirm|ok)\b/i,
+    /^(?:aceptar|aceptar todo|consentir|confirmar|permitir|de acuerdo)\b/i,
+  ];
+  async function clickByText(ctx) {
+    try {
+      return await ctx.evaluate((patterns) => {
+        function textOf(el) { return (el.innerText || el.textContent || '').trim(); }
+        const matchesAny = (txt) => patterns.some((p) => new RegExp(p).test(txt));
+        const q = [
+          'button', '[role="button"]',
+          '.fc-consent-root button', '.fc-consent-root [role="button"]',
+        ].join(',');
+        const els = Array.from(document.querySelectorAll(q));
+        for (const el of els) {
+          const txt = textOf(el);
+          if (!txt) continue;
+          if (matchesAny(txt) && !/manage|options|reject|rechazar/i.test(txt)) {
+            el.click();
+            return true;
+          }
+        }
+        return false;
+      }, consentTextRegexes.map((r) => r.source));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  while (Date.now() < deadline && (!accepted || !bannerDismissed)) {
+    try {
+      if (!bannerDismissed) {
+        bannerDismissed = await page.evaluate(() => {
+          const btn = document.querySelector('#d-notification-bar .notification-dismiss');
+          if (btn) { btn.click(); return true; }
+          return false;
+        }).catch(() => false);
+      }
+
+      if (!accepted) {
+        for (const sel of consentSelectors) {
+          // eslint-disable-next-line no-await-in-loop
+          const ok = await clickInContext(page, sel);
+          if (ok) { accepted = true; break; }
+        }
+        if (!accepted) {
+          // Try text-based fallback in main document
+          // eslint-disable-next-line no-await-in-loop
+          accepted = await clickByText(page);
+        }
+      }
+
+      if (!accepted) {
+        const frames = page.frames();
+        for (const f of frames) {
+          // eslint-disable-next-line no-await-in-loop
+          for (const sel of consentSelectors) {
+            // eslint-disable-next-line no-await-in-loop
+            const ok = await clickInContext(f, sel);
+            if (ok) { accepted = true; break; }
+          }
+          if (accepted) break;
+          // eslint-disable-next-line no-await-in-loop
+          if (!accepted) accepted = await clickByText(f);
+          if (accepted) break;
+        }
+      }
+
+      if (accepted) {
+        await new Promise(r => setTimeout(r, 200));
+        const stillVisible = await page.evaluate(() => !!document.querySelector('.fc-consent-root'))
+          .catch(() => false);
+        if (!stillVisible) break;
+      }
+    } catch (_) {
+      // ignore and retry briefly
+    }
+    await new Promise(r => setTimeout(r, 250));
+  }
+
+  if (accepted) {
+    console.log('[consent] Accepted cookie/consent dialog');
+  } else {
+    console.log('[consent] No consent dialog handled (not found or skipped)');
+  }
 }
 
 async function captureOnce() {
@@ -83,11 +217,14 @@ async function captureOnce() {
     await page.setUserAgent(
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
     );
-    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+    await page.setViewport({ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, deviceScaleFactor: DEVICE_SCALE_FACTOR });
     await page.goto(TARGET_URL, { waitUntil: NAV_WAIT_UNTIL, timeout: 60_000 });
     if (POST_NAV_WAIT_MS > 0) {
       await sleep(POST_NAV_WAIT_MS);
     }
+
+    // Attempt to accept cookie/consent banners that may obscure content
+    await tryHandleConsent(page);
 
     // Try to promote the target element (webcam iframe) to fullscreen to capture only the video
     // at a full-viewport resolution. This is especially useful when the page constrains the

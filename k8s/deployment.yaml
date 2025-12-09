@@ -9,6 +9,17 @@ spec:
     requests:
       storage: 1Gi
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: puppeteer-profile-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 256Mi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,15 +47,21 @@ spec:
               value: "iframe[src*=\"ipcamlive.com\"]"
             - name: MAKE_CLIP_FULLSCREEN
               value: "true"
+            - name: AUTO_CONSENT
+              value: "true"
             - name: CAPTURE_INTERVAL_MS
               value: "60000" # 60s
             - name: OUTPUT_DIR
               value: "/tmp/images"
+            - name: USER_DATA_DIR
+              value: "/tmp/puppeteer"
           ports:
             - containerPort: 8080
           volumeMounts:
             - name: images
               mountPath: /tmp/images
+            - name: puppeteer-profile
+              mountPath: /tmp/puppeteer
           readinessProbe:
             httpGet:
               path: /readyz
@@ -68,6 +85,9 @@ spec:
         - name: images
           persistentVolumeClaim:
             claimName: webcam-images-pvc
+        - name: puppeteer-profile
+          persistentVolumeClaim:
+            claimName: puppeteer-profile-pvc
 ---
 apiVersion: v1
 kind: Service
