@@ -124,8 +124,10 @@ async function generateVideoForDate(ymd, files) {
     console.warn(`[video] ffmpeg not available; skipping generation for ${ymd}`);
     return false;
   }
+  // Ensure frames are in chronological order (oldest -> newest) for video playback
+  const chronological = files.slice().sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
   const tmpBase = path.join(TMP_DIR, `seq-${ymd}`);
-  const { chosenExt, used } = prepareSequence(tmpBase, files);
+  const { chosenExt, used } = prepareSequence(tmpBase, chronological);
   if (used.length === 0) {
     console.warn(`[video] No images prepared for ${ymd}`);
     return false;
@@ -662,7 +664,10 @@ function getDailyVideosSorted() {
 async function mergeDailyVideosIntoFull() {
   const hasFfmpeg = await ffmpegAvailable();
   if (!hasFfmpeg) { console.warn('[merge] ffmpeg not available; skipping full merge'); return false; }
-  const vids = getDailyVideosSorted();
+  // Merge daily videos in chronological order (oldest -> newest)
+  const vids = getDailyVideosSorted()
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
   if (vids.length === 0) { console.log('[merge] No daily videos to merge'); return false; }
   ensureDir(VIDEOS_DIR);
   ensureDir(TMP_DIR);
