@@ -807,11 +807,11 @@ app.get('/', (req, res) => {
       try {
         const st = fs.statSync(videoPathForDate(d));
         const url = `/images/videos/${encodeURIComponent(d + '.mp4')}?v=${Math.floor(st.mtimeMs)}`;
-        playBtn = `<a class="btn" href="${url}" target="_blank" rel="noopener">Play</a>`;
+        playBtn = `<button class="btn" onclick="openPlayer('${url}')">Play</button>`;
       } catch (_) { /* fallback keeps disabled button */ }
     }
     const reBtn = count > 0
-      ? `<button class="btn" onclick="reprocessDay('${d}')">Reprocess</button>`
+      ? `<button class="btn" onclick="reprocessDay('${d}', this)">Reprocess</button>`
       : `<button class="btn" disabled>Reprocess</button>`;
     return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}</li>`;
   }).join('');
@@ -924,18 +924,75 @@ app.get('/', (req, res) => {
       })();
     </script>
     <script>
+      // In-app video player overlay
+      (function(){
+        function byId(id){ return document.getElementById(id); }
+        window.openPlayer = function(url){
+          var ov = byId('player-overlay');
+          var v = byId('player-video');
+          if (!ov || !v) return;
+          try { v.pause(); } catch (_) {}
+          v.src = url;
+          ov.hidden = false;
+          try { v.play().catch(function(){}); } catch (_) {}
+        };
+        window.closePlayer = function(){
+          var ov = byId('player-overlay');
+          var v = byId('player-video');
+          if (!ov || !v) return;
+          try { v.pause(); } catch (_) {}
+          v.removeAttribute('src');
+          ov.hidden = true;
+        };
+        window.playerFullscreen = function(){
+          var v = byId('player-video');
+          if (!v) return;
+          if (v.requestFullscreen) v.requestFullscreen().catch(function(){});
+          else if (v.webkitEnterFullscreen) try { v.webkitEnterFullscreen(); } catch(_){}
+        };
+        window.addEventListener('keydown', function(e){ if (e.key === 'Escape') closePlayer(); });
+      })();
+    </script>
+    <script>
       // Manual reprocess helper for Videos tab (home page)
-      function reprocessDay(ymd){
+      function reprocessDay(ymd, el){
         var status = document.getElementById('reprocess-status');
         if (status) status.textContent = 'Reprocessing ' + ymd + '…';
+        if (el) { el.disabled = true; el.dataset._label = el.textContent; el.textContent = 'Reprocessing…'; }
         fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
           .then(function(data){
-            if (status) status.textContent = data && data.success ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            // If successful, enable Play in the same row immediately
+            if (ok && el) {
+              var row = el.closest('.video-row');
+              if (row) {
+                var buttons = row.querySelectorAll('button.btn');
+                for (var i = 0; i < buttons.length; i++) {
+                  if (/^Play$/i.test(buttons[i].textContent || '')) {
+                    buttons[i].disabled = false;
+                    (function(btn){ btn.onclick = function(){ openPlayer('/images/videos/' + ymd + '.mp4?v=' + Date.now()); }; })(buttons[i]);
+                    break;
+                  }
+                }
+              }
+              // Also open the freshly generated video now
+              openPlayer('/images/videos/' + ymd + '.mp4?v=' + Date.now());
+            }
           })
-          .catch(function(){ if (status) status.textContent = 'Failed.'; });
+          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Reprocess'; }});
       }
     </script>
+    <style>
+      /* Overlay for in-app video playback */
+      #player-overlay[hidden] { display: none !important; }
+      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 9999; }
+      .player-wrap { width: min(96vw, 1200px); }
+      .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
+      .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    </style>
     <script>
       (function() {
         var KEY = 'home-active-tab';
@@ -1002,8 +1059,17 @@ app.get('/', (req, res) => {
         ${videoRowsHtml ? `<ul class="video-list">${videoRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
-        ${fullUrl ? `<div class="full"><video src="${fullUrl}" controls preload="metadata" playsinline></video></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
+        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button></div></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
       </section>
+    </div>
+    <div id="player-overlay" hidden>
+      <div class="player-wrap">
+        <video id="player-video" controls playsinline></video>
+        <div class="player-actions">
+          <button class="btn" onclick="playerFullscreen()">Fullscreen</button>
+          <button class="btn" onclick="closePlayer()">Close</button>
+        </div>
+      </div>
     </div>
   </body>
 </html>`;
@@ -1030,7 +1096,7 @@ app.get('/day/:ymd', (req, res) => {
   const videosHtml = vids.map(v => {
     const url = `/images/videos/${encodeURIComponent(v.name)}?v=${Math.floor(v.stat.mtimeMs)}`;
     const caption = v.name.replace(/\.mp4$/i, '');
-    return `<a href="${url}" target="_blank" rel="noopener"><div class="video-card"><video src="${url}" preload="metadata" controls playsinline></video><div class="caption">${caption}</div></div></a>`;
+    return `<a href="${url}" onclick="openPlayer('${url}'); return false;"><div class="video-card"><video src="${url}" preload="metadata" controls playsinline></video><div class="caption">${caption}</div></div></a>`;
   }).join('');
   const body = `<!doctype html>
 <html lang="en">
@@ -1091,20 +1157,63 @@ app.get('/day/:ymd', (req, res) => {
       })();
     </script>
     <script>
-      function reprocessDay(ymd) {
-        var btn = document.getElementById('reprocess-btn');
+      // In-app video player overlay
+      (function(){
+        function byId(id){ return document.getElementById(id); }
+        window.openPlayer = function(url){
+          var ov = byId('player-overlay');
+          var v = byId('player-video');
+          if (!ov || !v) return;
+          try { v.pause(); } catch (_) {}
+          v.src = url;
+          ov.hidden = false;
+          try { v.play().catch(function(){}); } catch (_) {}
+        };
+        window.closePlayer = function(){
+          var ov = byId('player-overlay');
+          var v = byId('player-video');
+          if (!ov || !v) return;
+          try { v.pause(); } catch (_) {}
+          v.removeAttribute('src');
+          ov.hidden = true;
+        };
+        window.playerFullscreen = function(){
+          var v = byId('player-video');
+          if (!v) return;
+          if (v.requestFullscreen) v.requestFullscreen().catch(function(){});
+          else if (v.webkitEnterFullscreen) try { v.webkitEnterFullscreen(); } catch(_){}
+        };
+        window.addEventListener('keydown', function(e){ if (e.key === 'Escape') closePlayer(); });
+      })();
+    </script>
+    <script>
+      function reprocessDay(ymd, el) {
+        var btn = el || document.getElementById('reprocess-btn');
         var status = document.getElementById('reprocess-status');
-        if (btn) btn.disabled = true;
+        if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Reprocessing…'; }
         if (status) status.textContent = 'Reprocessing…';
         fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
           .then(function(data){
-            if (status) status.textContent = data && data.success ? 'Done.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
-            if (btn) btn.disabled = false;
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? 'Done.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (ok) {
+              // Open freshly generated video in in-app player
+              openPlayer('/images/videos/' + ymd + '.mp4?v=' + Date.now());
+            }
           })
-          .catch(function(){ if (status) status.textContent = 'Failed.'; if (btn) btn.disabled = false; });
+          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || btn.textContent; }});
       }
     </script>
+    <style>
+      /* Overlay for in-app video playback */
+      #player-overlay[hidden] { display: none !important; }
+      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 9999; }
+      .player-wrap { width: min(96vw, 1200px); }
+      .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
+      .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    </style>
     <script>
       (function() {
         var KEY = 'home-active-tab';
@@ -1166,12 +1275,21 @@ app.get('/day/:ymd', (req, res) => {
         ${imgs.length ? `<div class="thumbs">${grid}</div>` : '<p>No images for this date.</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
-        <div class="actions"><button id="reprocess-btn" class="btn" onclick="reprocessDay('${ymd}')">Reprocess ${ymd} video</button><span id="reprocess-status" class="meta"></span></div>
+        <div class="actions"><button id="reprocess-btn" class="btn" onclick="reprocessDay('${ymd}', this)"${imgs.length ? '' : ' disabled'}>Reprocess ${ymd} video</button><span id="reprocess-status" class="meta"></span></div>
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
-        ${fullUrl ? `<div class="full"><video src="${fullUrl}" controls preload="metadata" playsinline></video></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
+        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button></div></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
       </section>
+    </div>
+    <div id="player-overlay" hidden>
+      <div class="player-wrap">
+        <video id="player-video" controls playsinline></video>
+        <div class="player-actions">
+          <button class="btn" onclick="playerFullscreen()">Fullscreen</button>
+          <button class="btn" onclick="closePlayer()">Close</button>
+        </div>
+      </div>
     </div>
   </body>
 </html>`;
