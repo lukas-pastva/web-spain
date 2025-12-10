@@ -803,6 +803,16 @@ app.get('/', (req, res) => {
     const caption = v.name.replace(/\.mp4$/i, '');
     return `<a href="${url}" target="_blank" rel="noopener"><div class="video-card"><video src="${url}" preload="metadata" controls playsinline></video><div class="caption">${caption}</div></div></a>`;
   }).join('');
+  // Build options for manual reprocess (prioritize today)
+  const datesForSelect = allDates.includes(todayDate) ? allDates : [todayDate, ...allDates];
+  const dateOptionsHtml = datesForSelect
+    .map((d) => {
+      const count = listImagesForDate(d).length;
+      const label = count > 0 ? `${d} (${count})` : `${d}`;
+      const sel = d === todayDate ? ' selected' : '';
+      return `<option value="${d}"${sel}>${label}</option>`;
+    })
+    .join('');
   // Total number of stored images across all date folders
   const storedCount = getProcessedDateFolders().reduce((acc, d) => acc + listImagesForDate(d).length, 0);
   const body = `<!doctype html>
@@ -858,6 +868,9 @@ app.get('/', (req, res) => {
       .videos a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
       .videos video { width: 100%; height: 150px; background: #000; display: block; object-fit: cover; }
       .videos .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .actions { display:flex; align-items:center; gap:8px; margin: 8px 0 12px; }
+      .actions select { padding: 6px 8px; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 4px; }
+      .actions button { padding: 6px 10px; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 4px; cursor: pointer; }
       a.button { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); border-radius: 4px; text-decoration: none; color: var(--button-fg); background: var(--button-bg); }
       a.button:hover { filter: brightness(0.98); }
       code { background: var(--code-bg); color: var(--fg); padding: 2px 4px; border-radius: 4px; }
@@ -907,6 +920,28 @@ app.get('/', (req, res) => {
         }
         window.addEventListener('DOMContentLoaded', updateUi);
       })();
+    </script>
+    <script>
+      // Manual reprocess helpers for Videos tab (home page)
+      function reprocessDay(ymd){
+        var btn = document.getElementById('reprocess-btn');
+        var status = document.getElementById('reprocess-status');
+        if (!ymd) return;
+        if (btn) btn.disabled = true;
+        if (status) status.textContent = 'Reprocessing…';
+        fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            if (status) status.textContent = data && data.success ? 'Done.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (btn) btn.disabled = false;
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; if (btn) btn.disabled = false; });
+      }
+      function reprocessSelected(){
+        var sel = document.getElementById('reprocess-date');
+        var d = sel && sel.value; if (!d) return;
+        reprocessDay(d);
+      }
     </script>
     <script>
       (function() {
@@ -970,6 +1005,12 @@ app.get('/', (req, res) => {
         ${datesHtml ? `<ul class="date-list">${datesHtml}</ul>` : '<p>No stored snapshots yet.</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
+        <div class="actions">
+          <label for="reprocess-date">Reprocess day:</label>
+          <select id="reprocess-date">${dateOptionsHtml}</select>
+          <button id="reprocess-btn" onclick="reprocessSelected()">Reprocess</button>
+          <span id="reprocess-status" class="meta"></span>
+        </div>
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
