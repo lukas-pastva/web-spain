@@ -798,21 +798,23 @@ app.get('/', (req, res) => {
     })
     .filter(Boolean)
     .join('');
-  const videosHtml = vids.map(v => {
-    const url = `/images/videos/${encodeURIComponent(v.name)}?v=${Math.floor(v.stat.mtimeMs)}`;
-    const caption = v.name.replace(/\.mp4$/i, '');
-    return `<a href="${url}" target="_blank" rel="noopener"><div class="video-card"><video src="${url}" preload="metadata" controls playsinline></video><div class="caption">${caption}</div></div></a>`;
+  // Build daily rows with Play and Reprocess actions (no thumbnails)
+  const videoRowsHtml = allDates.map((d) => {
+    const count = listImagesForDate(d).length;
+    const hasVid = videoExistsForDate(d);
+    let playBtn = '<button class="btn" disabled>Play</button>';
+    if (hasVid) {
+      try {
+        const st = fs.statSync(videoPathForDate(d));
+        const url = `/images/videos/${encodeURIComponent(d + '.mp4')}?v=${Math.floor(st.mtimeMs)}`;
+        playBtn = `<a class="btn" href="${url}" target="_blank" rel="noopener">Play</a>`;
+      } catch (_) { /* fallback keeps disabled button */ }
+    }
+    const reBtn = count > 0
+      ? `<button class="btn" onclick="reprocessDay('${d}')">Reprocess</button>`
+      : `<button class="btn" disabled>Reprocess</button>`;
+    return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}</li>`;
   }).join('');
-  // Build options for manual reprocess (prioritize today)
-  const datesForSelect = allDates.includes(todayDate) ? allDates : [todayDate, ...allDates];
-  const dateOptionsHtml = datesForSelect
-    .map((d) => {
-      const count = listImagesForDate(d).length;
-      const label = count > 0 ? `${d} (${count})` : `${d}`;
-      const sel = d === todayDate ? ' selected' : '';
-      return `<option value="${d}"${sel}>${label}</option>`;
-    })
-    .join('');
   // Total number of stored images across all date folders
   const storedCount = getProcessedDateFolders().reduce((acc, d) => acc + listImagesForDate(d).length, 0);
   const body = `<!doctype html>
@@ -864,13 +866,13 @@ app.get('/', (req, res) => {
       .date-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; background: var(--button-bg); color: var(--fg); }
       .date-item .name { font-weight: 600; }
       .date-item .count { color: var(--muted); font-variant-numeric: tabular-nums; }
-      .videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-      .videos a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
-      .videos video { width: 100%; height: 150px; background: #000; display: block; object-fit: cover; }
-      .videos .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .actions { display:flex; align-items:center; gap:8px; margin: 8px 0 12px; }
-      .actions select { padding: 6px 8px; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 4px; }
-      .actions button { padding: 6px 10px; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 4px; cursor: pointer; }
+      .videos { display: none; }
+      .video-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+      .video-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--button-bg); color: var(--fg); }
+      .video-row .name { font-weight: 600; }
+      .video-row .meta-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+      .btn { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 4px; text-decoration: none; cursor: pointer; }
+      .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
       a.button { display: inline-block; padding: 6px 10px; border: 1px solid var(--button-border); border-radius: 4px; text-decoration: none; color: var(--button-fg); background: var(--button-bg); }
       a.button:hover { filter: brightness(0.98); }
       code { background: var(--code-bg); color: var(--fg); padding: 2px 4px; border-radius: 4px; }
@@ -922,25 +924,16 @@ app.get('/', (req, res) => {
       })();
     </script>
     <script>
-      // Manual reprocess helpers for Videos tab (home page)
+      // Manual reprocess helper for Videos tab (home page)
       function reprocessDay(ymd){
-        var btn = document.getElementById('reprocess-btn');
         var status = document.getElementById('reprocess-status');
-        if (!ymd) return;
-        if (btn) btn.disabled = true;
-        if (status) status.textContent = 'Reprocessing…';
+        if (status) status.textContent = 'Reprocessing ' + ymd + '…';
         fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
           .then(function(data){
-            if (status) status.textContent = data && data.success ? 'Done.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
-            if (btn) btn.disabled = false;
+            if (status) status.textContent = data && data.success ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
           })
-          .catch(function(){ if (status) status.textContent = 'Failed.'; if (btn) btn.disabled = false; });
-      }
-      function reprocessSelected(){
-        var sel = document.getElementById('reprocess-date');
-        var d = sel && sel.value; if (!d) return;
-        reprocessDay(d);
+          .catch(function(){ if (status) status.textContent = 'Failed.'; });
       }
     </script>
     <script>
@@ -1005,13 +998,8 @@ app.get('/', (req, res) => {
         ${datesHtml ? `<ul class="date-list">${datesHtml}</ul>` : '<p>No stored snapshots yet.</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
-        <div class="actions">
-          <label for="reprocess-date">Reprocess day:</label>
-          <select id="reprocess-date">${dateOptionsHtml}</select>
-          <button id="reprocess-btn" onclick="reprocessSelected()">Reprocess</button>
-          <span id="reprocess-status" class="meta"></span>
-        </div>
-        ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
+        <div class="meta" id="reprocess-status"></div>
+        ${videoRowsHtml ? `<ul class="video-list">${videoRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
         ${fullUrl ? `<div class="full"><video src="${fullUrl}" controls preload="metadata" playsinline></video></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
