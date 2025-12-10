@@ -643,21 +643,39 @@ async function captureOnce(options = {}) {
     // Always capture the current viewport (fullscreen if the player handled it)
     await page.screenshot(shotOptions);
 
-    // Overlay Alicante temperature onto the image using ffmpeg (if available)
+    // Overlay Alicante + Bratislava info (temp, sunrise, sunset, day length) on the image using ffmpeg (if available)
     try {
-      const tempText = await (async () => {
-        // Prefer cached value if <5 minutes old; otherwise try fresh fetch
-        const freshEnough = wxState.updatedAt && (Date.now() - wxState.updatedAt < 5 * 60_000) && wxState.alicante && typeof wxState.alicante.tempC === 'number';
-        if (freshEnough) return `${ALICANTE.name.split(',')[0]} • ${Math.round(wxState.alicante.tempC)}°C`;
-        try {
-          const wx = await fetchWxFor(ALICANTE);
-          return `${ALICANTE.name.split(',')[0]} • ${Math.round(wx.tempC)}°C`;
-        } catch (_) { /* ignore */ }
-        return `${ALICANTE.name.split(',')[0]} • —°C`;
-      })();
-      await overlayTextOnImage(filePath, tempText);
+      const ensureRecent = async () => {
+        const fresh = wxState.updatedAt && (Date.now() - wxState.updatedAt < 5 * 60_000) && wxState.alicante && wxState.bratislava;
+        if (fresh) return wxState;
+        try { await refreshWeather(); } catch (_) {}
+        return wxState;
+      };
+      await ensureRecent();
+      const a = wxState.alicante || {};
+      const b = wxState.bratislava || {};
+      const fmtTime = (s) => (typeof s === 'string' && s.includes('T')) ? s.split('T')[1] : (s || '—');
+      const dayA = typeof a.daylightSeconds === 'number' ? formatDayLength(a.daylightSeconds) : '—';
+      const dayB = typeof b.daylightSeconds === 'number' ? formatDayLength(b.daylightSeconds) : '—';
+      const tA = typeof a.tempC === 'number' ? `${Math.round(a.tempC)}°C` : '—°C';
+      const linesA = [
+        `${ALICANTE.name.split(',')[0]} • ${tA}`,
+        `Sunrise ${fmtTime(a.sunrise)}`,
+        `Sunset ${fmtTime(a.sunset)}`,
+        `Day ${dayA}`,
+      ];
+      const linesB = [
+        `${BRATISLAVA.name.split(',')[0]}`,
+        `Sunrise ${fmtTime(b.sunrise)}`,
+        `Sunset ${fmtTime(b.sunset)}`,
+        `Day ${dayB}`,
+      ];
+      await overlayMultiTextOnImage(filePath, [
+        { text: linesA.join('\n'), x: '20', y: '20' },
+        { text: linesB.join('\n'), x: 'w-tw-20', y: '20' },
+      ]);
     } catch (e) {
-      console.warn('[overlay] Failed to stamp temperature:', e && e.message ? e.message : e);
+      console.warn('[overlay] Failed to stamp info:', e && e.message ? e.message : e);
     }
     await page.close();
 
@@ -679,18 +697,9 @@ async function captureOnce(options = {}) {
   }
 }
 
-// Overlay helper using ffmpeg drawtext
-async function overlayTextOnImage(inputPath, text) {
-  if (!text || !text.trim()) return false;
-  const hasFfmpeg = await ffmpegAvailable();
-  if (!hasFfmpeg) { console.warn('[overlay] ffmpeg not available; skipping'); return false; }
-  const dir = path.dirname(inputPath);
-  const base = path.basename(inputPath);
-  const out = path.join(dir, `.tmp-${base}`);
-  try { fs.unlinkSync(out); } catch (_) {}
-  // Escape text for ffmpeg drawtext; replace ':' and '\'' etc.
-  const safeText = text.replace(/:/g, '\\:').replace(/'/g, "\\'" );
-  // Try to pick a common font file if available; otherwise rely on ffmpeg default
+// Overlay helpers using ffmpeg drawtext
+function buildDrawtext(text, opts) {
+  const { x = '20', y = '20', fontsize = 36, box = true } = opts || {};
   const fontCandidates = [
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
@@ -698,21 +707,37 @@ async function overlayTextOnImage(inputPath, text) {
   ];
   const fontFile = fontCandidates.find(p => { try { return fs.existsSync(p); } catch (_) { return false; } });
   const fontPart = fontFile ? `fontfile=${fontFile}:` : '';
-  const filter = `drawtext=${fontPart}text='${safeText}':fontcolor=white:fontsize=36:box=1:boxcolor=black@0.55:boxborderw=12:x=20:y=20:shadowcolor=black:shadowx=2:shadowy=2`;
-  const args = ['-y', '-i', inputPath, '-vf', filter, '-q:v', String(Math.max(2, Math.round((100 - JPEG_QUALITY) / 5))), out];
+  // Escape drawtext special chars and allow \n for new lines
+  const safeText = String(text)
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'");
+  const boxPart = box ? ':box=1:boxcolor=black@0.55:boxborderw=12' : '';
+  return `drawtext=${fontPart}text='${safeText}':fontcolor=white:fontsize=${fontsize}${boxPart}:x=${x}:y=${y}:shadowcolor=black:shadowx=2:shadowy=2`;
+}
+
+async function overlayMultiTextOnImage(inputPath, blocks) {
+  if (!blocks || !blocks.length) return false;
+  const hasFfmpeg = await ffmpegAvailable();
+  if (!hasFfmpeg) { console.warn('[overlay] ffmpeg not available; skipping'); return false; }
+  const dir = path.dirname(inputPath);
+  const base = path.basename(inputPath);
+  const out = path.join(dir, `.tmp-${base}`);
+  try { fs.unlinkSync(out); } catch (_) {}
+  const filter = blocks.map(b => buildDrawtext(b.text || '', b)).join(',');
+  const ext = (path.extname(inputPath).toLowerCase().replace('.', '')) || 'jpg';
+  const args = ['-y', '-i', inputPath, '-vf', filter];
+  if (ext === 'jpg' || ext === 'jpeg') {
+    args.push('-q:v', String(Math.max(2, Math.round((100 - JPEG_QUALITY) / 5))));
+  }
+  args.push(out);
   await new Promise((resolve, reject) => {
     const p = spawn('ffmpeg', args, { stdio: ['ignore', 'inherit', 'inherit'] });
     p.on('error', reject);
     p.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
   });
-  // Replace original
-  try {
-    fs.renameSync(out, inputPath);
-  } catch (e) {
-    // Fallback copy
-    fs.copyFileSync(out, inputPath);
-    try { fs.unlinkSync(out); } catch(_){}
-  }
+  try { fs.renameSync(out, inputPath); }
+  catch (e) { fs.copyFileSync(out, inputPath); try { fs.unlinkSync(out); } catch(_){} }
   return true;
 }
 
