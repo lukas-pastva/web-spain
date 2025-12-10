@@ -15,6 +15,12 @@ const FULL_VIDEO_NAME = process.env.FULL_VIDEO_NAME || 'full.mp4';
 const FULL_VIDEO_PATH = path.join(VIDEOS_DIR, FULL_VIDEO_NAME);
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
+// Weather/astronomy settings
+const WX_REFRESH_MS = parseInt(process.env.WX_REFRESH_MS || '600000', 10); // 10 minutes
+// Alicante, Spain
+const ALICANTE = { name: 'Alicante, ES', lat: 38.345, lon: -0.481, tz: 'Europe/Madrid' };
+// Bratislava, Slovakia
+const BRATISLAVA = { name: 'Bratislava, SK', lat: 48.1486, lon: 17.1077, tz: 'Europe/Bratislava' };
 
 const FULLSCREEN_DELAY_MS = parseInt(process.env.FULLSCREEN_DELAY_MS || '400', 10);
 // Handle consent/cookie banners automatically so capture isn't blocked
@@ -208,6 +214,94 @@ function nowIsoNoColons() {
   // Make filename friendly for most filesystems
   return new Date().toISOString().replace(/[:]/g, '-');
 }
+
+// --- Weather & Sun helpers (Open-Meteo) ---
+const https = require('https');
+function httpGetJson(url) {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = https.get(url, { timeout: 15_000 }, (res) => {
+        if (res.statusCode && res.statusCode >= 400) {
+          return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+        }
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => { data += c; });
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(e); }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { try { req.destroy(); } catch (_) {} reject(new Error('timeout')); });
+    } catch (e) { reject(e); }
+  });
+}
+
+let wxState = {
+  updatedAt: 0,
+  alicante: null,
+  bratislava: null,
+};
+
+function formatDayLength(sec) {
+  if (typeof sec !== 'number' || !isFinite(sec) || sec <= 0) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+function pickTodayDaily(entry) {
+  // Open-Meteo daily arrays for time/sunrise/sunset/daylight_duration; take index 0 (today)
+  try {
+    const idx = 0;
+    const time = entry.daily.time[idx];
+    const sunrise = entry.daily.sunrise[idx];
+    const sunset = entry.daily.sunset[idx];
+    const daylight = entry.daily.daylight_duration[idx];
+    return { time, sunrise, sunset, daylightSeconds: daylight };
+  } catch (_) { return null; }
+}
+
+async function fetchWxFor(loc) {
+  const base = 'https://api.open-meteo.com/v1/forecast';
+  const params = new URLSearchParams({
+    latitude: String(loc.lat),
+    longitude: String(loc.lon),
+    timezone: String(loc.tz || 'auto'),
+    current: 'temperature_2m',
+    daily: 'sunrise,sunset,daylight_duration',
+  });
+  const url = `${base}?${params.toString()}`;
+  const json = await httpGetJson(url);
+  const out = { name: loc.name };
+  try { out.tempC = json.current?.temperature_2m; } catch (_) {}
+  const today = pickTodayDaily(json) || {};
+  out.sunrise = today.sunrise;
+  out.sunset = today.sunset;
+  out.daylightSeconds = today.daylightSeconds;
+  return out;
+}
+
+async function refreshWeather() {
+  try {
+    const [a, b] = await Promise.allSettled([fetchWxFor(ALICANTE), fetchWxFor(BRATISLAVA)]);
+    wxState.alicante = a.status === 'fulfilled' ? a.value : wxState.alicante;
+    wxState.bratislava = b.status === 'fulfilled' ? b.value : wxState.bratislava;
+    wxState.updatedAt = Date.now();
+    if (a.status !== 'fulfilled' || b.status !== 'fulfilled') {
+      console.warn('[weather] Partial refresh', a.status, b.status);
+    } else {
+      console.log('[weather] Refreshed');
+    }
+  } catch (e) {
+    console.warn('[weather] Refresh failed:', e && e.message ? e.message : e);
+  }
+}
+
+// Start background refresh loop
+setTimeout(() => { refreshWeather().catch(()=>{}); }, 2000);
+setInterval(() => { refreshWeather().catch(()=>{}); }, Math.max(60_000, WX_REFRESH_MS));
 
 async function tryHandleConsent(page) {
   if (!AUTO_CONSENT) return;
@@ -548,6 +642,23 @@ async function captureOnce(options = {}) {
 
     // Always capture the current viewport (fullscreen if the player handled it)
     await page.screenshot(shotOptions);
+
+    // Overlay Alicante temperature onto the image using ffmpeg (if available)
+    try {
+      const tempText = await (async () => {
+        // Prefer cached value if <5 minutes old; otherwise try fresh fetch
+        const freshEnough = wxState.updatedAt && (Date.now() - wxState.updatedAt < 5 * 60_000) && wxState.alicante && typeof wxState.alicante.tempC === 'number';
+        if (freshEnough) return `${ALICANTE.name.split(',')[0]} • ${Math.round(wxState.alicante.tempC)}°C`;
+        try {
+          const wx = await fetchWxFor(ALICANTE);
+          return `${ALICANTE.name.split(',')[0]} • ${Math.round(wx.tempC)}°C`;
+        } catch (_) { /* ignore */ }
+        return `${ALICANTE.name.split(',')[0]} • —°C`;
+      })();
+      await overlayTextOnImage(filePath, tempText);
+    } catch (e) {
+      console.warn('[overlay] Failed to stamp temperature:', e && e.message ? e.message : e);
+    }
     await page.close();
 
     console.log(`[capture] Saved ${filePath}`);
@@ -566,6 +677,43 @@ async function captureOnce(options = {}) {
   } finally {
     capturing = false;
   }
+}
+
+// Overlay helper using ffmpeg drawtext
+async function overlayTextOnImage(inputPath, text) {
+  if (!text || !text.trim()) return false;
+  const hasFfmpeg = await ffmpegAvailable();
+  if (!hasFfmpeg) { console.warn('[overlay] ffmpeg not available; skipping'); return false; }
+  const dir = path.dirname(inputPath);
+  const base = path.basename(inputPath);
+  const out = path.join(dir, `.tmp-${base}`);
+  try { fs.unlinkSync(out); } catch (_) {}
+  // Escape text for ffmpeg drawtext; replace ':' and '\'' etc.
+  const safeText = text.replace(/:/g, '\\:').replace(/'/g, "\\'" );
+  // Try to pick a common font file if available; otherwise rely on ffmpeg default
+  const fontCandidates = [
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
+  ];
+  const fontFile = fontCandidates.find(p => { try { return fs.existsSync(p); } catch (_) { return false; } });
+  const fontPart = fontFile ? `fontfile=${fontFile}:` : '';
+  const filter = `drawtext=${fontPart}text='${safeText}':fontcolor=white:fontsize=36:box=1:boxcolor=black@0.55:boxborderw=12:x=20:y=20:shadowcolor=black:shadowx=2:shadowy=2`;
+  const args = ['-y', '-i', inputPath, '-vf', filter, '-q:v', String(Math.max(2, Math.round((100 - JPEG_QUALITY) / 5))), out];
+  await new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'inherit', 'inherit'] });
+    p.on('error', reject);
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+  });
+  // Replace original
+  try {
+    fs.renameSync(out, inputPath);
+  } catch (e) {
+    // Fallback copy
+    fs.copyFileSync(out, inputPath);
+    try { fs.unlinkSync(out); } catch(_){}
+  }
+  return true;
 }
 
 function computeNextDelay() {
@@ -822,6 +970,15 @@ app.get('/', (req, res) => {
   }).join('');
   // Total number of stored images across all date folders
   const storedCount = getProcessedDateFolders().reduce((acc, d) => acc + listImagesForDate(d).length, 0);
+  // Weather/Sun panel values
+  const wxA = wxState.alicante || {};
+  const wxB = wxState.bratislava || {};
+  const fmt = (s) => (typeof s === 'string' && s.includes('T')) ? s.split('T')[1] : (s || '—');
+  const dayA = typeof wxA.daylightSeconds === 'number' ? formatDayLength(wxA.daylightSeconds) : '—';
+  const dayB = typeof wxB.daylightSeconds === 'number' ? formatDayLength(wxB.daylightSeconds) : '—';
+  const tempA = (typeof wxA.tempC === 'number' ? `${Math.round(wxA.tempC)}°C` : '—');
+  const wxUpdated = wxState.updatedAt ? new Date(wxState.updatedAt).toLocaleTimeString() : '—';
+
   const body = `<!doctype html>
 <html lang="en">
   <head>
@@ -858,6 +1015,12 @@ app.get('/', (req, res) => {
       .meta { color: var(--muted); font-size: 0.9em; margin: 8px 0; }
       .grid { display: grid; gap: 16px; }
       .rows { display: grid; gap: 24px; }
+      /* Weather panel */
+      .wx { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 10px 0 4px; }
+      .wx-card { border: 1px solid var(--border); background: var(--button-bg); color: var(--fg); border-radius: 6px; padding: 10px; }
+      .wx-card .title { font-weight: 700; margin-bottom: 6px; }
+      .wx-card .row { display: flex; justify-content: space-between; gap: 8px; }
+      .wx-updated { color: var(--muted); font-size: 0.85em; }
       .row h2 { margin: 0 0 8px; font-size: 1.15em; color: var(--fg); }
       .folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
       .folder { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
@@ -1046,6 +1209,24 @@ app.get('/', (req, res) => {
       </div>
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
     </header>
+    <section aria-label="Weather and Sun">
+      <div class="wx">
+        <div class="wx-card" aria-live="polite">
+          <div class="title">Alicante, ES</div>
+          <div class="row"><span>Temp</span><span>${tempA}</span></div>
+          <div class="row"><span>Sunrise</span><span>${fmt(wxA.sunrise)}</span></div>
+          <div class="row"><span>Sunset</span><span>${fmt(wxA.sunset)}</span></div>
+          <div class="row"><span>Day length</span><span>${dayA}</span></div>
+        </div>
+        <div class="wx-card">
+          <div class="title">Bratislava, SK</div>
+          <div class="row"><span>Sunrise</span><span>${fmt(wxB.sunrise)}</span></div>
+          <div class="row"><span>Sunset</span><span>${fmt(wxB.sunset)}</span></div>
+          <div class="row"><span>Day length</span><span>${dayB}</span></div>
+        </div>
+      </div>
+      <div class="wx-updated">Weather updated: ${wxUpdated}</div>
+    </section>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
       <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored</button>
