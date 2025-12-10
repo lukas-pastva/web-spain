@@ -958,7 +958,7 @@ app.get('/', (req, res) => {
     </header>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
-      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored (${storedCount})</button>
+      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
       <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
     </div>
@@ -1120,11 +1120,10 @@ app.get('/day/:ymd', (req, res) => {
         <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
       </div>
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
-      <div class="meta"><a href="/" class="button" aria-label="Back to days list">&larr; Back to days</a></div>
     </header>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="false" class="tab">Live</button>
-      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="true" class="tab">Stored (${imgs.length})</button>
+      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="true" class="tab">Stored</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
       <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
     </div>
@@ -1133,6 +1132,7 @@ app.get('/day/:ymd', (req, res) => {
         ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
       </section>
       <section id="panel-stored" class="tabpanel" role="tabpanel" aria-labelledby="tab-stored" aria-hidden="false">
+        <div class="actions"><a href="/" class="button" aria-label="Back to days list">&larr; Back to days</a></div>
         <div class="hint">Snapshots for <strong>${ymd}</strong></div>
         ${imgs.length ? `<div class="thumbs">${grid}</div>` : '<p>No images for this date.</p>'}
       </section>
