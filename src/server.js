@@ -783,18 +783,19 @@ app.get('/', (req, res) => {
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
   const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
   const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
-  // Build folder tiles for Stored tab: Today + past dates
+  // Build simple date list (no images) for Stored tab
   const todayDate = ymdToday();
-  const todayCover = getCoverForDate(todayDate);
-  const pastDates = getProcessedDateFolders().filter(d => d !== todayDate);
-  const folderTile = (date) => {
-    const cover = getCoverForDate(date);
-    const count = cover ? cover.count : 0;
-    const coverHtml = cover ? `<img src="${cover.url}" alt="${date}" loading="lazy" />` : `<div class="empty">No images</div>`;
-    return `<a class="folder" href="/day/${date}" aria-label="Open ${date}">${coverHtml}<div class="folder-caption"><span class="name">${date}</span><span class="count">${count}</span></div></a>`;
-  };
-  const foldersHtml = [todayCover ? folderTile(todayDate) : '']
-    .concat(pastDates.map(d => folderTile(d)))
+  const allDates = getProcessedDateFolders();
+  const datesHtml = allDates
+    .map((d) => {
+      // Skip today if it has no images yet (keep previous behavior)
+      if (d === todayDate) {
+        const cover = getCoverForDate(d);
+        if (!cover) return '';
+      }
+      const count = listImagesForDate(d).length;
+      return `<li><a class="date-item" href="/day/${d}" aria-label="Open ${d}"><span class="name">${d}</span><span class="count">${count}</span></a></li>`;
+    })
     .filter(Boolean)
     .join('');
   const videosHtml = vids.map(v => {
@@ -848,6 +849,11 @@ app.get('/', (req, res) => {
       .folder-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.95em; padding: 8px 10px; }
       .folder-caption .name { font-weight: 600; }
       .folder-caption .count { color: var(--muted); font-variant-numeric: tabular-nums; }
+      /* Stored dates list (no thumbnails) */
+      .date-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+      .date-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; background: var(--button-bg); color: var(--fg); }
+      .date-item .name { font-weight: 600; }
+      .date-item .count { color: var(--muted); font-variant-numeric: tabular-nums; }
       .videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
       .videos a { display: block; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; text-decoration: none; background: var(--button-bg); color: var(--fg); }
       .videos video { width: 100%; height: 150px; background: #000; display: block; object-fit: cover; }
@@ -961,7 +967,7 @@ app.get('/', (req, res) => {
         ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
       </section>
       <section id="panel-stored" class="tabpanel" role="tabpanel" aria-labelledby="tab-stored" hidden aria-hidden="true">
-        ${foldersHtml ? `<div class="folders">${foldersHtml}</div>` : '<p>No stored snapshots yet.</p>'}
+        ${datesHtml ? `<ul class="date-list">${datesHtml}</ul>` : '<p>No stored snapshots yet.</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
@@ -1114,6 +1120,7 @@ app.get('/day/:ymd', (req, res) => {
         <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
       </div>
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
+      <div class="meta"><a href="/" class="button" aria-label="Back to days list">&larr; Back to days</a></div>
     </header>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="false" class="tab">Live</button>
