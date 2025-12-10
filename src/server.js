@@ -658,6 +658,7 @@ async function captureOnce(options = {}) {
       const dayA = typeof a.daylightSeconds === 'number' ? formatDayLength(a.daylightSeconds) : '—';
       const dayB = typeof b.daylightSeconds === 'number' ? formatDayLength(b.daylightSeconds) : '—';
       const tA = typeof a.tempC === 'number' ? `${Math.round(a.tempC)}°C` : '—°C';
+      const tB = typeof b.tempC === 'number' ? `${Math.round(b.tempC)}°C` : '—°C';
       const linesA = [
         `${ALICANTE.name.split(',')[0]} • ${tA}`,
         `Sunrise ${fmtTime(a.sunrise)}`,
@@ -665,7 +666,7 @@ async function captureOnce(options = {}) {
         `Day ${dayA}`,
       ];
       const linesB = [
-        `${BRATISLAVA.name.split(',')[0]}`,
+        `${BRATISLAVA.name.split(',')[0]} • ${tB}`,
         `Sunrise ${fmtTime(b.sunrise)}`,
         `Sunset ${fmtTime(b.sunset)}`,
         `Day ${dayB}`,
@@ -1002,6 +1003,7 @@ app.get('/', (req, res) => {
   const dayA = typeof wxA.daylightSeconds === 'number' ? formatDayLength(wxA.daylightSeconds) : '—';
   const dayB = typeof wxB.daylightSeconds === 'number' ? formatDayLength(wxB.daylightSeconds) : '—';
   const tempA = (typeof wxA.tempC === 'number' ? `${Math.round(wxA.tempC)}°C` : '—');
+  const tempB = (typeof wxB.tempC === 'number' ? `${Math.round(wxB.tempC)}°C` : '—');
   const wxUpdated = wxState.updatedAt ? new Date(wxState.updatedAt).toLocaleTimeString() : '—';
 
   const body = `<!doctype html>
@@ -1245,6 +1247,7 @@ app.get('/', (req, res) => {
         </div>
         <div class="wx-card">
           <div class="title">Bratislava, SK</div>
+          <div class="row"><span>Temp</span><span>${tempB}</span></div>
           <div class="row"><span>Sunrise</span><span>${fmt(wxB.sunrise)}</span></div>
           <div class="row"><span>Sunset</span><span>${fmt(wxB.sunset)}</span></div>
           <div class="row"><span>Day length</span><span>${dayB}</span></div>
