@@ -953,12 +953,28 @@ app.post('/api/reprocess/:ymd', async (req, res) => {
   }
 });
 
+// API: Re-merge all daily videos into the full-time video
+app.post('/api/reprocess-full', async (req, res) => {
+  try {
+    const daily = getDailyVideosSorted();
+    if (!daily || daily.length === 0) {
+      return res.status(404).json({ success: false, error: 'No daily videos to merge' });
+    }
+    const ok = await mergeDailyVideosIntoFull();
+    return res.status(ok ? 200 : 500).json({ success: !!ok });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+  }
+});
+
 // Simple index page that shows the latest screenshot
 app.get('/', (req, res) => {
   const latest = getLatestImagePath();
   const latestUrl = latest ? `/images/${latest}` : null;
   const all = getImagesSorted(100);
-  const vids = getDailyVideosSorted().slice(0, 30);
+  const _allDaily = getDailyVideosSorted();
+  const vids = _allDaily.slice(0, 30);
+  const hasAnyDaily = _allDaily.length > 0;
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
   const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
   const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
@@ -1180,6 +1196,60 @@ app.get('/', (req, res) => {
           .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Reprocess'; }});
       }
     </script>
+    <script>
+      // Reprocess the full-time (merged) video
+      function reprocessFull(el) {
+        var btn = el || document.getElementById('reprocess-full-btn');
+        var status = document.getElementById('reprocess-full-status');
+        if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Reprocessing…'; }
+        if (status) status.textContent = 'Reprocessing full-time video…';
+        fetch('/api/reprocess-full', { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? 'Full-time video updated.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (ok) {
+              var v = document.getElementById('full-video');
+              if (v) {
+                var src = (v.getAttribute('src') || '').split('?')[0];
+                v.setAttribute('src', src + '?v=' + Date.now());
+                try { v.load(); } catch(_){}
+              } else {
+                try { location.reload(); } catch(_){}
+              }
+            }
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Reprocess'; }});
+      }
+    </script>
+    <script>
+      // Reprocess the full-time (merged) video
+      function reprocessFull(el) {
+        var btn = el || document.getElementById('reprocess-full-btn');
+        var status = document.getElementById('reprocess-full-status');
+        if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Reprocessing…'; }
+        if (status) status.textContent = 'Reprocessing full-time video…';
+        fetch('/api/reprocess-full', { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? 'Full-time video updated.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (ok) {
+              var v = document.getElementById('full-video');
+              if (v) {
+                var src = (v.getAttribute('src') || '').split('?')[0];
+                v.setAttribute('src', src + '?v=' + Date.now());
+                try { v.load(); } catch(_){}
+              } else {
+                try { location.reload(); } catch(_){}
+              }
+            }
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Reprocess'; }});
+      }
+    </script>
     <style>
       /* Overlay for in-app video playback */
       #player-overlay[hidden] { display: none !important; }
@@ -1273,7 +1343,7 @@ app.get('/', (req, res) => {
         ${videoRowsHtml ? `<ul class="video-list">${videoRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
-        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button></div></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
+        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
       </section>
     </div>
     <div id="player-overlay" hidden>
@@ -1493,7 +1563,7 @@ app.get('/day/:ymd', (req, res) => {
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
-        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button></div></div>` : '<p>No full-time video yet. It updates daily around 1:00.</p>'}
+        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${vids.length ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${vids.length ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
       </section>
     </div>
     <div id="player-overlay" hidden>
