@@ -1268,26 +1268,32 @@ app.get('/', (req, res) => {
     <meta http-equiv="refresh" content="${Math.max(30, Math.floor(CAPTURE_INTERVAL_MS / 1000 / 2))}" />
     <style>
       :root {
-        --bg: #ffffff;
-        --fg: #111111;
-        --muted: #666666;
-        --border: #dddddd;
-        --button-bg: #ffffff;
-        --button-fg: #333333;
-        --button-border: #cccccc;
-        --code-bg: #f6f8fa;
+        /* Beach vibe (day): sky → sand gradient + sea accents */
+        --bg: #e8f7ff;        /* light sky */
+        --bg2: #fff3d6;       /* warm sand */
+        --fg: #1f3b4d;        /* deep sea slate */
+        --muted: #6e8a91;     /* muted teal-gray */
+        --border: #cfe7ef;    /* soft sky border */
+        --button-bg: #eaf6ff; /* airy button */
+        --button-fg: #0b4f6c; /* sea */
+        --button-border: #bfe6f5;
+        --code-bg: #fff2d6;   /* sandy code blocks */
+        --accent: #2bb3d9;    /* turquoise accent */
       }
       [data-theme="dark"] {
-        --bg: #0f1115;
-        --fg: #e6e6e6;
-        --muted: #a0a0a0;
-        --border: #2a2f3a;
-        --button-bg: #171a21;
-        --button-fg: #e6e6e6;
-        --button-border: #2a2f3a;
-        --code-bg: #111827;
+        /* Beach vibe (night): deep navy with teal accents */
+        --bg: #0b1d26;        /* deep night sky */
+        --bg2: #041018;       /* horizon */
+        --fg: #cfe9f3;        /* moonlit text */
+        --muted: #8bb2bf;     /* muted teal */
+        --border: #123542;    /* dark teal border */
+        --button-bg: #0f2a35; /* button surface */
+        --button-fg: #cfe9f3; /* readable on dark */
+        --button-border: #1f4756;
+        --code-bg: #082028;   /* dark panel */
+        --accent: #56cfe1;    /* bright sea */
       }
-      html, body { background: var(--bg); color: var(--fg); }
+      html, body { background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%); color: var(--fg); }
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
       header { margin-bottom: 16px; }
       header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -1327,12 +1333,12 @@ app.get('/', (req, res) => {
       /* Icon-only theme button */
       .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
       .icon-btn:hover { filter: brightness(0.98); }
-      .icon-btn:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      .icon-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
       /* Tabs */
       .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-top: 12px; }
       .tab { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-top-left-radius: 6px; border-top-right-radius: 6px; cursor: pointer; }
       .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); border-color: var(--button-border); border-bottom-color: var(--bg); }
-      .tab:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      .tab:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
       .tabpanels { border: 1px solid var(--button-border); border-top: none; padding: 12px; border-radius: 0 6px 6px 6px; }
       .full video { width: 100%; height: auto; display: block; background: #000; }
     </style>
@@ -1745,9 +1751,9 @@ app.get('/day/:ymd', (req, res) => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Snapshots for ${ymd}</title>
     <style>
-      :root { --bg:#fff; --fg:#111; --muted:#666; --border:#ddd; --button-bg:#fff; --button-fg:#333; --button-border:#ccc; --code-bg:#f6f8fa; }
-      [data-theme="dark"] { --bg:#0f1115; --fg:#e6e6e6; --muted:#a0a0a0; --border:#2a2f3a; --button-bg:#171a21; --button-fg:#e6e6e6; --button-border:#2a2f3a; --code-bg:#111827; }
-      html, body { background: var(--bg); color: var(--fg); }
+      :root { --bg:#e8f7ff; --bg2:#fff3d6; --fg:#1f3b4d; --muted:#6e8a91; --border:#cfe7ef; --button-bg:#eaf6ff; --button-fg:#0b4f6c; --button-border:#bfe6f5; --code-bg:#fff2d6; --accent:#2bb3d9; }
+      [data-theme="dark"] { --bg:#0b1d26; --bg2:#041018; --fg:#cfe9f3; --muted:#8bb2bf; --border:#123542; --button-bg:#0f2a35; --button-fg:#cfe9f3; --button-border:#1f4756; --code-bg:#082028; --accent:#56cfe1; }
+      html, body { background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%); color: var(--fg); }
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
       header { margin-bottom: 16px; }
       header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -1757,12 +1763,12 @@ app.get('/day/:ymd', (req, res) => {
       code { background: var(--code-bg); color: var(--fg); padding: 2px 4px; border-radius: 4px; }
       /* Icon-only theme button */
       .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
-      .icon-btn:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      .icon-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
       /* Tabs */
       .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-top: 12px; }
       .tab { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-top-left-radius: 6px; border-top-right-radius: 6px; cursor: pointer; }
       .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); border-color: var(--button-border); border-bottom-color: var(--bg); }
-      .tab:focus { outline: 2px solid #5b9cff; outline-offset: 2px; }
+      .tab:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
       .tabpanels { border: 1px solid var(--button-border); border-top: none; padding: 12px; border-radius: 0 6px 6px 6px; }
       /* Grids */
       .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
