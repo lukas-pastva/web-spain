@@ -1374,6 +1374,48 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         opacity: 1;
         transform: translateX(-50%) scale(1);
       }
+      /* Simple tooltip bubble for any element with data-tip */
+      [data-tip] { position: relative; }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        transform: translateX(-50%) scale(0.98);
+        background: rgba(0,0,0,0.85);
+        color: #fff;
+        padding: 6px 8px;
+        border-radius: 6px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+        width: max-content;
+        max-width: 260px;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: pre-line;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease, transform 120ms ease;
+        z-index: 10000;
+      }
+      [data-tip]::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 2px);
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: rgba(0,0,0,0.85);
+        opacity: 0;
+        transition: opacity 120ms ease;
+        z-index: 10001;
+      }
+      [data-tip]:hover::after,
+      [data-tip]:focus-visible::after,
+      [data-tip]:hover::before,
+      [data-tip]:focus-visible::before {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+      }
       .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
       .icon-btn:hover { filter: brightness(0.98); }
       .icon-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
