@@ -1018,8 +1018,8 @@ app.post('/api/reprocess/:ymd', async (req, res) => {
   }
 });
 
-// API: Reprocess/regenerate daylight-only video for a specific date
-app.post('/api/reprocess-daylight/:ymd', async (req, res) => {
+  // API: Reprocess/regenerate daylight-only video for a specific date
+  app.post('/api/reprocess-daylight/:ymd', async (req, res) => {
   try {
     const ymd = String(req.params.ymd || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
@@ -1034,7 +1034,39 @@ app.post('/api/reprocess-daylight/:ymd', async (req, res) => {
   } catch (e) {
     return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
   }
-});
+  });
+
+  // API: Delete all images for a given date folder (YYYY-MM-DD)
+  app.post('/api/delete-images/:ymd', async (req, res) => {
+    try {
+      const ymd = String(req.params.ymd || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+        return res.status(400).json({ success: false, error: 'Bad date' });
+      }
+      const baseDir = path.join(OUTPUT_DIR, ymd);
+      let deleted = 0;
+      try {
+        const files = fs.readdirSync(baseDir);
+        for (const name of files) {
+          const lower = name.toLowerCase();
+          if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png')) {
+            try { fs.unlinkSync(path.join(baseDir, name)); deleted++; } catch (_) {}
+          }
+        }
+      } catch (_) {
+        // If folder missing, treat as nothing to delete
+      }
+      // Try remove date folder if empty after deletion
+      let removedDir = false;
+      try {
+        const remain = fs.readdirSync(baseDir);
+        if (!remain || remain.length === 0) { fs.rmdirSync(baseDir); removedDir = true; }
+      } catch (_) { /* ignore */ }
+      return res.status(200).json({ success: true, deleted, removedDir });
+    } catch (e) {
+      return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+    }
+  });
 
 // API: Re-merge all daily videos into the full-time video
 app.post('/api/reprocess-full', async (req, res) => {
@@ -1116,29 +1148,16 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
 app.get('/', (req, res) => {
   const latest = getLatestImagePath();
   const latestUrl = latest ? `/images/${latest}` : null;
-  const all = getImagesSorted(100);
   const _allDaily = getDailyVideosSorted();
   const vids = _allDaily.slice(0, 30);
   const hasAnyDaily = _allDaily.length > 0;
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
   const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
   const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
-  // Build simple date list (no images) for Stored tab
+  // Dates for videos/daylight sections (image browsing removed)
   const todayDate = ymdToday();
   const allDates = getProcessedDateFolders();
-  const datesHtml = allDates
-    .map((d) => {
-      // Skip today if it has no images yet (keep previous behavior)
-      if (d === todayDate) {
-        const cover = getCoverForDate(d);
-        if (!cover) return '';
-      }
-      const count = listImagesForDate(d).length;
-      return `<li><a class="date-item" href="/day/${d}" aria-label="Open ${d}"><span class="name">${d}</span><span class="count">${count}</span></a></li>`;
-    })
-    .filter(Boolean)
-    .join('');
-  // Build daily rows with Play and Reprocess actions (no thumbnails)
+  // Build daily rows with Play, Reprocess, and Delete Images actions (no thumbnails)
   const videoRowsHtml = allDates.map((d) => {
     const count = listImagesForDate(d).length;
     const hasVid = videoExistsForDate(d);
@@ -1153,7 +1172,8 @@ app.get('/', (req, res) => {
     const reBtn = count > 0
       ? `<button class="btn" onclick="reprocessDay('${d}', this)">Reprocess</button>`
       : `<button class="btn" disabled>Reprocess</button>`;
-    return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}</li>`;
+    const delBtn = `<button class="btn" onclick="deleteImagesForDay('${d}', this)"${count > 0 ? '' : ' disabled'}>Delete images</button>`;
+    return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}${delBtn}</li>`;
   }).join('');
   // Build daylight-only rows
   const daylightRowsHtml = allDates.map((d) => {
@@ -1357,6 +1377,38 @@ app.get('/', (req, res) => {
           .catch(function(){ if (status) status.textContent = 'Failed.'; })
           .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Reprocess'; }});
       }
+      // Delete all images for a given date (homepage Videos tab)
+      function deleteImagesForDay(ymd, el){
+        if (!ymd) return;
+        var row = el && el.closest ? el.closest('.video-row') : null;
+        var status = document.getElementById('reprocess-status');
+        var confirmMsg = 'Delete all images for ' + ymd + '? This cannot be undone.';
+        try {
+          var ok = window.confirm(confirmMsg);
+          if (!ok) return;
+        } catch(_) {}
+        if (el) { el.disabled = true; el.dataset._label = el.textContent; el.textContent = 'Deleting…'; }
+        if (status) status.textContent = 'Deleting images for ' + ymd + '…';
+        fetch('/api/delete-images/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? ('Deleted ' + (data && typeof data.deleted === 'number' ? data.deleted : 0) + ' image(s) for ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (ok && row) {
+              // Update count to 0 and disable reprocess
+              var cnt = row.querySelector('.meta-count');
+              if (cnt) cnt.textContent = '0';
+              var buttons = row.querySelectorAll('button.btn');
+              for (var i = 0; i < buttons.length; i++) {
+                if (/^Reprocess$/i.test(buttons[i].textContent || '')) {
+                  buttons[i].disabled = true;
+                }
+              }
+            }
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Delete images'; }});
+      }
       // Manual reprocess helper for Daylight tab (home page)
       function reprocessDaylight(ymd, el){
         var status = document.getElementById('reprocess-daylight-status');
@@ -1485,7 +1537,7 @@ app.get('/', (req, res) => {
     <script>
       (function() {
         var KEY = 'home-active-tab';
-        var order = ['tab-live','tab-stored','tab-videos','tab-daylight','tab-lightall','tab-full'];
+        var order = ['tab-live','tab-videos','tab-daylight','tab-lightall','tab-full'];
         function select(tabId) {
           order.forEach(function(id) {
             var btn = document.getElementById(id);
@@ -1551,7 +1603,6 @@ app.get('/', (req, res) => {
     </section>
     <div class="tabs" role="tablist" aria-label="Views">
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
-      <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
       <button id="tab-daylight" role="tab" aria-controls="panel-daylight" aria-selected="false" class="tab">Daylight</button>
       <button id="tab-lightall" role="tab" aria-controls="panel-lightall" aria-selected="false" class="tab">Daylight All</button>
@@ -1560,9 +1611,6 @@ app.get('/', (req, res) => {
     <div class="tabpanels">
       <section id="panel-live" class="tabpanel" role="tabpanel" aria-labelledby="tab-live" aria-hidden="false">
         ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
-      </section>
-      <section id="panel-stored" class="tabpanel" role="tabpanel" aria-labelledby="tab-stored" hidden aria-hidden="true">
-        ${datesHtml ? `<ul class="date-list">${datesHtml}</ul>` : '<p>No stored snapshots yet.</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
         <div class="meta" id="reprocess-status"></div>
@@ -1597,6 +1645,7 @@ app.get('/', (req, res) => {
 
 // Day view: thumbnails for a specific YYYY-MM-DD
 app.get('/day/:ymd', (req, res) => {
+  return res.status(404).send('Not found');
   const ymd = String(req.params.ymd || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return res.status(400).send('Bad date');
   const imgs = listImagesForDate(ymd);
