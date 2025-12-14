@@ -1316,7 +1316,7 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; }
       header { margin-bottom: 12px; }
       header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-      .meta { color: var(--muted); font-size: 0.9em; margin: 6px 0; }
+      .meta { color: var(--muted); font-size: 0.9em; margin: 6px 0; overflow-wrap: anywhere; }
       .summary { display: grid; grid-template-columns: 1fr; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: rgba(255,255,255,0.45); }
       [data-theme=\"dark\"] .summary { background: rgba(0,0,0,0.2); }
       .summary .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -1333,6 +1333,20 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       .btn:hover { filter: brightness(0.98); }
       .btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
       .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+      /* Overlay for in-app video playback (and progress modal) */
+      #player-overlay[hidden], #modal-overlay[hidden] { display: none !important; }
+      #player-overlay, #modal-overlay { position: fixed; inset: 0; display: grid; place-items: center; z-index: 20000; }
+      #player-overlay { background: rgba(0,0,0,0.85); }
+      #modal-overlay { background: rgba(0,0,0,0.6); z-index: 21000; }
+      .player-wrap { width: min(96vw, 1200px); }
+      .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
+      .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+      .modal { width: min(92vw, 420px); background: var(--bg); color: var(--fg); border: 1px solid var(--button-border); border-radius: 10px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+      .modal-body { display: flex; align-items: center; gap: 12px; }
+      .modal-text { line-height: 1.4; }
+      .modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; }
+      .spinner { width: 20px; height: 20px; border-radius: 999px; border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
       /* Simple tooltip bubble for any element with data-tip */
       [data-tip] { position: relative; }
       [data-tip]::after {
@@ -1449,6 +1463,26 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         window.closePlayer = function(){ var ov = byId('player-overlay'); var v = byId('player-video'); if (!ov || !v) return; try { v.pause(); } catch(_){} v.removeAttribute('src'); ov.hidden = true; };
         window.playerFullscreen = function(){ var v = byId('player-video'); if (!v) return; if (v.requestFullscreen) v.requestFullscreen().catch(function(){}); else if (v.webkitEnterFullscreen) try { v.webkitEnterFullscreen(); } catch(_){} };
         window.addEventListener('keydown', function(e){ if (e.key === 'Escape') closePlayer(); });
+      })();
+    </script>
+    <script>
+      // Lightweight progress modal helpers
+      (function(){
+        function byId(id){ return document.getElementById(id); }
+        window.openModal = function(text){
+          var ov = byId('modal-overlay');
+          var t = byId('modal-text');
+          if (t) t.textContent = text || 'Working…';
+          if (ov) ov.hidden = false;
+        };
+        window.setModalText = function(text){
+          var t = byId('modal-text');
+          if (t) t.textContent = text || '';
+        };
+        window.closeModal = function(){
+          var ov = byId('modal-overlay');
+          if (ov) ov.hidden = true;
+        };
       })();
     </script>
     <script>
