@@ -1302,6 +1302,7 @@ app.get('/', (req, res) => {
       .grid { display: grid; gap: 16px; }
       .rows { display: grid; gap: 24px; }
       /* Weather panel */
+      .wx-section { margin-top: 5vh; }
       .wx { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 10px 0 4px; }
       .wx-card { border: 1px solid var(--border); background: var(--button-bg); color: var(--fg); border-radius: 6px; padding: 10px; }
       .wx-card .title { font-weight: 700; margin-bottom: 6px; }
@@ -1647,7 +1648,7 @@ app.get('/', (req, res) => {
       </div>
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
     </header>
-    <section aria-label="Weather and Sun">
+    <section class="wx-section" aria-label="Weather and Sun">
       <div class="wx">
         <div class="wx-card" aria-live="polite">
           <div class="title">Alicante, ES</div>
