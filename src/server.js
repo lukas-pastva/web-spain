@@ -205,8 +205,7 @@ function filterFilesToDaylight(ymd, files) {
   const minEnd = hmToMinutes(end.h, end.m);
   return files.filter(f => {
     const ms = f.stat.mtimeMs;
-    const localYmd = ymdOfLocalTz(ms);
-    if (localYmd && localYmd !== ymd) return false; // ensure file's local date matches target
+    // Use local time-of-day window only; do not hard-enforce date match to tolerate host TZ vs DAYLIGHT_TZ differences
     const mins = minutesOfLocalTz(ms);
     if (mins < 0) return false;
     return mins >= minStart && mins <= minEnd;
