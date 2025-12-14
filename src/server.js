@@ -1457,6 +1457,26 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       })();
     </script>
     <script>
+      // Lightweight progress modal helpers
+      (function(){
+        function byId(id){ return document.getElementById(id); }
+        window.openModal = function(text){
+          var ov = byId('modal-overlay');
+          var t = byId('modal-text');
+          if (t) t.textContent = text || 'Working…';
+          if (ov) ov.hidden = false;
+        };
+        window.setModalText = function(text){
+          var t = byId('modal-text');
+          if (t) t.textContent = text || '';
+        };
+        window.closeModal = function(){
+          var ov = byId('modal-overlay');
+          if (ov) ov.hidden = true;
+        };
+      })();
+    </script>
+    <script>
       (function(){
         function byId(id){ return document.getElementById(id); }
         window.openPlayer = function(url){ var ov = byId('player-overlay'); var v = byId('player-video'); if (!ov || !v) return; try { v.pause(); } catch(_){} v.src = url; ov.hidden = false; try { v.play().catch(function(){}); } catch(_){} };
