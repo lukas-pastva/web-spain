@@ -1334,12 +1334,11 @@ app.get('/', (req, res) => {
       .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
       .icon-btn:hover { filter: brightness(0.98); }
       .icon-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
-      /* Tabs */
-      .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-top: 12px; }
-      .tab { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-top-left-radius: 6px; border-top-right-radius: 6px; cursor: pointer; }
-      .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); border-color: var(--button-border); border-bottom-color: var(--bg); }
-      .tab:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
-      .tabpanels { border: 1px solid var(--button-border); border-top: none; padding: 12px; border-radius: 0 6px 6px 6px; }
+      /* Compact view selector */
+      .nav-views { display: flex; gap: 8px; align-items: center; margin: 12px 0 8px; }
+      .view-select { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-radius: 6px; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+      .tabpanels { border: 1px solid var(--button-border); padding: 12px; border-radius: 6px; }
       .full video { width: 100%; height: auto; display: block; background: #000; }
     </style>
     <script>
@@ -1611,39 +1610,30 @@ app.get('/', (req, res) => {
     </style>
     <script>
       (function() {
-        var KEY = 'home-active-tab';
-        var order = ['tab-live','tab-videos','tab-daylight','tab-lightall','tab-full'];
-        function select(tabId) {
-          order.forEach(function(id) {
-            var btn = document.getElementById(id);
-            var panel = document.getElementById('panel-' + id.split('-')[1]);
-            var active = id === tabId;
-            if (btn) btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        var KEY = 'home-active-view';
+        var keys = ['live','videos','daylight','lightall','full'];
+        function setView(k) {
+          keys.forEach(function(v){
+            var panel = document.getElementById('panel-' + v);
+            var active = v === k;
             if (panel) {
               panel.hidden = !active;
               panel.setAttribute('aria-hidden', active ? 'false' : 'true');
             }
           });
-          try { localStorage.setItem(KEY, tabId); } catch (_) {}
+          try { localStorage.setItem(KEY, k); } catch (_) {}
         }
         function init() {
-          var saved = 'tab-live';
-          try { saved = localStorage.getItem(KEY) || 'tab-live'; } catch (_) {}
-          if (!document.getElementById(saved)) saved = 'tab-live';
-          order.forEach(function(id, idx) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            el.addEventListener('click', function() { select(id); });
-            el.addEventListener('keydown', function(e) {
-              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                e.preventDefault();
-                var next = order[(idx + (e.key === 'ArrowRight' ? 1 : -1) + order.length) % order.length];
-                var ne = document.getElementById(next);
-                if (ne) { ne.focus(); select(next); }
-              }
-            });
-          });
-          select(saved);
+          var sel = document.getElementById('view-select');
+          var saved = 'live';
+          try { saved = localStorage.getItem(KEY) || 'live'; } catch (_) {}
+          if (!keys.includes(saved) && /^tab-/.test(saved)) saved = (saved.split('-')[1] || 'live');
+          if (!keys.includes(saved)) saved = 'live';
+          if (sel) {
+            sel.value = saved;
+            sel.addEventListener('change', function(){ setView(sel.value); });
+          }
+          setView(saved);
         }
         window.addEventListener('DOMContentLoaded', init);
       })();
@@ -1676,12 +1666,15 @@ app.get('/', (req, res) => {
       </div>
       <div class="wx-updated">Weather updated: ${wxUpdated}</div>
     </section>
-    <div class="tabs" role="tablist" aria-label="Views">
-      <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
-      <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
-      <button id="tab-daylight" role="tab" aria-controls="panel-daylight" aria-selected="false" class="tab">Daylight</button>
-      <button id="tab-lightall" role="tab" aria-controls="panel-lightall" aria-selected="false" class="tab">Daylight All</button>
-      <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
+    <div class="nav-views" aria-label="Views">
+      <label for="view-select" class="sr-only">View</label>
+      <select id="view-select" class="view-select" aria-controls="panel-live panel-videos panel-daylight panel-lightall panel-full">
+        <option value="live">Live</option>
+        <option value="videos">Videos</option>
+        <option value="daylight">Daylight</option>
+        <option value="lightall">Daylight All</option>
+        <option value="full">Full-time</option>
+      </select>
     </div>
     <div class="tabpanels">
       <section id="panel-live" class="tabpanel" role="tabpanel" aria-labelledby="tab-live" aria-hidden="false">
