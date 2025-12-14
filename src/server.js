@@ -1500,7 +1500,7 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       <div class="meta">Target: <code>${TARGET_URL}</code></div>
     </header>
     <section class="summary">
-      <div class="line"><strong>Current image</strong>${latestUrl ? `: <img src="${latestUrl}" alt="Latest" />` : ': none yet'}</div>
+      <div class="line"><strong>Current image</strong><br />${latestUrl ? `<img src="${latestUrl}" alt="Latest" />` : 'none yet'}</div>
       <div class="line"><strong>Video total daylight</strong>: ${totalDaylight}</div>
       <div class="line"><strong>Video total 24h</strong>: ${total24h}</div>
       <div id="status" class="meta" aria-live="polite"></div>
@@ -1520,6 +1520,10 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   </body>
 </html>`;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      // Ensure browsers don't cache the HTML (and inline CSS)
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       return res.status(200).send(body);
     } catch (e) {
       // fall back to previous UI on any error
@@ -2095,6 +2099,10 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   </body>
 </html>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  // Ensure browsers don't cache the HTML (and inline CSS)
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.status(200).send(body);
 });
 
@@ -2436,6 +2444,10 @@ app.get('/day/:ymd', (req, res) => {
   </body>
 </html>`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  // Ensure browsers don't cache the HTML (and inline CSS)
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.status(200).send(body);
 });
 
