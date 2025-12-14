@@ -1974,6 +1974,17 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       .player-wrap { width: min(96vw, 1200px); }
       .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
       .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+      /* Lightweight progress modal */
+      #modal-overlay[hidden] { display: none !important; }
+      #modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: grid; place-items: center; z-index: 21000; }
+      .modal { width: min(92vw, 420px); background: var(--bg); color: var(--fg); border: 1px solid var(--button-border); border-radius: 10px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+      .modal-body { display: flex; align-items: center; gap: 12px; }
+      .modal-text { line-height: 1.4; }
+      .modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; }
+      .spinner { width: 20px; height: 20px; border-radius: 999px; border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      /* Prevent status text clipping */
+      .meta { overflow-wrap: anywhere; }
     </style>
     <script>
       (function() {
@@ -2094,6 +2105,17 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         <div class="player-actions">
           <button class="btn" onclick="playerFullscreen()">Fullscreen</button>
           <button class="btn" onclick="closePlayer()">Close</button>
+        </div>
+      </div>
+    </div>
+    <div id="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-text">
+      <div class="modal">
+        <div class="modal-body">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="modal-text" id="modal-text" aria-live="polite">Working…</div>
+        </div>
+        <div class="modal-actions">
+          <button id="modal-close-btn" class="btn" onclick="closeModal()">Close</button>
         </div>
       </div>
     </div>
