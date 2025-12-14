@@ -1212,9 +1212,7 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   // Dates for videos/daylight sections (image browsing removed)
   const todayDate = ymdToday();
   const allDates = getProcessedDateFolders();
-  // Temperature color (white at <=0°C to red at >=40°C)
-  const wxA = wxState.alicante || {};
-  const tempVal = (typeof wxA.tempC === 'number' ? wxA.tempC : null);
+  // Temperature color helper (white at <=0°C to red at >=40°C)
   function __tempToHex(t) {
     if (typeof t !== 'number' || !isFinite(t)) return '#cccccc';
     const cl = Math.max(0, Math.min(40, t));
@@ -1225,8 +1223,6 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
     const h = (n) => n.toString(16).padStart(2, '0');
     return `#${h(r)}${h(g)}${h(b)}`;
   }
-  const tempColor = __tempToHex(tempVal);
-  const tempDisplay = (typeof tempVal === 'number' ? `${Math.round(tempVal)}°C` : '—');
   // Build daily rows with Play, Reprocess, and Delete Images actions (no thumbnails)
   const videoRowsHtml = allDates.map((d) => {
     const count = listImagesForDate(d).length;
@@ -1273,6 +1269,10 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   const tempA = (typeof wxA.tempC === 'number' ? `${Math.round(wxA.tempC)}°C` : '—');
   const tempB = (typeof wxB.tempC === 'number' ? `${Math.round(wxB.tempC)}°C` : '—');
   const wxUpdated = wxState.updatedAt ? new Date(wxState.updatedAt).toLocaleTimeString() : '—';
+  // Temperature overlay values
+  const tempVal = (typeof wxA.tempC === 'number' ? wxA.tempC : null);
+  const tempColor = __tempToHex(tempVal);
+  const tempDisplay = (typeof tempVal === 'number' ? `${Math.round(tempVal)}°C` : '—');
 
   const body = `<!doctype html>
 <html lang="en">
