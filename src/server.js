@@ -1364,8 +1364,8 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       /* Live image overlay: temperature */
       .live-wrap { position: relative; display: inline-block; }
       .temp-badge { position: absolute; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.35); backdrop-filter: blur(2px); }
-      .temp-badge.badge-right { top: 8px; right: 8px; }
-      .temp-badge.badge-left { top: 8px; left: 8px; }
+      .temp-badge.badge-right { bottom: 8px; right: 8px; top: auto; transform-origin: right bottom; transform: scale(0.5); }
+      .temp-badge.badge-left { bottom: 8px; left: 8px; top: auto; transform-origin: left bottom; transform: scale(0.5); }
       .temp-icon { width: 18px; height: 18px; color: var(--temp-color, #ccc); filter: drop-shadow(0 0 2px rgba(255,255,255,0.7)); }
       .temp-label { color: #ffffff; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
     </style>
