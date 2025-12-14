@@ -1267,6 +1267,179 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
 
   // Simple index page that shows the latest screenshot
   app.get('/', (req, res) => {
+    // Unified single-screen view (no dropdowns)
+    try {
+      const latest = getLatestImagePath();
+      const latestUrl = latest ? `/images/${latest}` : null;
+      const allDates = getProcessedDateFolders();
+      const total24h = getDailyVideosSorted().length;
+      const totalDaylight = getDaylightDailyVideosSorted().length;
+      const rowsHtml = allDates.map((d) => {
+        const count = listImagesForDate(d).length;
+        const has24 = videoExistsForDate(d);
+        const hasDay = daylightVideoExistsForDate(d);
+        let play24 = '<button class="btn sm" data-action="play-24" disabled title="Play 24h">▶</button>';
+        if (has24) {
+          try {
+            const st = fs.statSync(videoPathForDate(d));
+            const url = `/images/videos/${encodeURIComponent(d + '.mp4')}?v=${Math.floor(st.mtimeMs)}`;
+            play24 = `<button class=\"btn sm\" data-action=\"play-24\" title=\"Play 24h\" onclick=\"openPlayer('${url}')\">▶</button>`;
+          } catch (_) {}
+        }
+        let playDay = '<button class="btn sm" data-action="play-day" disabled title="Play daylight">☀ ▶</button>';
+        if (hasDay) {
+          try {
+            const st = fs.statSync(daylightVideoPathForDate(d));
+            const url = `/images/videos/${encodeURIComponent(d + '-daylight.mp4')}?v=${Math.floor(st.mtimeMs)}`;
+            playDay = `<button class=\"btn sm\" data-action=\"play-day\" title=\"Play daylight\" onclick=\"openPlayer('${url}')\">☀ ▶</button>`;
+          } catch (_) {}
+        }
+        const re24 = count > 0
+          ? `<button class="btn sm" data-action="re-24" title="Reprocess 24h" onclick="reprocessDay('${d}', this)">♻️</button>`
+          : `<button class="btn sm" data-action="re-24" title="Reprocess 24h" disabled>♻️</button>`;
+        const reDay = count > 0
+          ? `<button class="btn sm" data-action="re-day" title="Reprocess daylight" onclick="reprocessDaylight('${d}', this)">♻️</button>`
+          : `<button class="btn sm" data-action="re-day" title="Reprocess daylight" disabled>♻️</button>`;
+        const del = `<button class="btn sm" data-action="delete" title="Delete all photos" onclick="deleteImagesForDay('${d}', this)">🗑️</button>`;
+        return `<li class=\"day-row\" data-ymd=\"${d}\"><span class=\"name\">${d}</span><span class=\"count\" title=\"Photos\">${count}</span><div class=\"group\">${play24}${re24}</div><div class=\"group\">${playDay}${reDay}</div><div class=\"group\">${del}</div></li>`;
+      }).join('');
+      const body = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Webcam Snapshots</title>
+    <style>
+      :root { --bg:#e8f7ff; --bg2:#fff3d6; --fg:#1f3b4d; --muted:#6e8a91; --border:#cfe7ef; --button-bg:#eaf6ff; --button-fg:#0b4f6c; --button-border:#bfe6f5; --code-bg:#fff2d6; --accent:#2bb3d9; }
+      [data-theme=\"dark\"] { --bg:#0b1d26; --bg2:#041018; --fg:#cfe9f3; --muted:#8bb2bf; --border:#123542; --button-bg:#0f2a35; --button-fg:#cfe9f3; --button-border:#1f4756; --code-bg:#082028; --accent:#56cfe1; }
+      html, body { background: linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%); color: var(--fg); }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; }
+      header { margin-bottom: 12px; }
+      header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .meta { color: var(--muted); font-size: 0.9em; margin: 6px 0; }
+      .summary { display: grid; grid-template-columns: 1fr; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: rgba(255,255,255,0.45); }
+      [data-theme=\"dark\"] .summary { background: rgba(0,0,0,0.2); }
+      .summary .line { display: flex; align-items: center; gap: 10px; }
+      .summary img { max-width: 320px; height: auto; border: 1px solid var(--border); border-radius: 6px; }
+      .days { list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: 1fr; gap: 6px; }
+      .day-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.5); }
+      [data-theme=\"dark\"] .day-row { background: rgba(0,0,0,0.2); }
+      .day-row .name { font-weight: 600; }
+      .day-row .count { color: var(--muted); padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; font-variant-numeric: tabular-nums; }
+      .group { display: inline-flex; gap: 6px; }
+      .btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-radius: 999px; cursor: pointer; }
+      .btn.sm { padding: 4px 8px; }
+      .btn:hover { filter: brightness(0.98); }
+      .btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+      .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
+      .icon-btn:hover { filter: brightness(0.98); }
+      .icon-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+      #player-overlay[hidden] { display: none !important; }
+      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 9999; }
+      .player-wrap { width: min(96vw, 1200px); }
+      .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
+      .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    </style>
+    <script>
+      (function() {
+        var KEY = 'theme-preference';
+        var mql = window.matchMedia('(prefers-color-scheme: dark)');
+        function getStored() { try { return localStorage.getItem(KEY) || 'auto'; } catch (_) { return 'auto'; } }
+        function applyTheme(mode) { var effective = mode === 'auto' ? (mql.matches ? 'dark' : 'light') : mode; document.documentElement.setAttribute('data-theme', effective); }
+        var mode = getStored(); applyTheme(mode);
+        function iconFor(m) { return m === 'light' ? '☀️' : (m === 'dark' ? '🌙' : '🖥️'); }
+        function titleFor(m) { return 'Theme: ' + (m.charAt(0).toUpperCase() + m.slice(1)); }
+        function updateUi() { var btn = document.getElementById('theme-btn'); var ico = document.getElementById('theme-icon'); if (btn) btn.setAttribute('title', titleFor(mode)); if (ico) ico.textContent = iconFor(mode); }
+        window.__cycleTheme = function() { mode = mode === 'auto' ? 'light' : (mode === 'light' ? 'dark' : 'auto'); try { localStorage.setItem(KEY, mode); } catch (_) {} applyTheme(mode); updateUi(); };
+        if (mql && mql.addEventListener) mql.addEventListener('change', function(){ if (mode === 'auto') applyTheme(mode); });
+        else if (mql && mql.addListener) mql.addListener(function(){ if (mode === 'auto') applyTheme(mode); });
+        window.addEventListener('DOMContentLoaded', updateUi);
+      })();
+    </script>
+    <script>
+      (function(){
+        function byId(id){ return document.getElementById(id); }
+        window.openPlayer = function(url){ var ov = byId('player-overlay'); var v = byId('player-video'); if (!ov || !v) return; try { v.pause(); } catch(_){} v.src = url; ov.hidden = false; try { v.play().catch(function(){}); } catch(_){} };
+        window.closePlayer = function(){ var ov = byId('player-overlay'); var v = byId('player-video'); if (!ov || !v) return; try { v.pause(); } catch(_){} v.removeAttribute('src'); ov.hidden = true; };
+        window.playerFullscreen = function(){ var v = byId('player-video'); if (!v) return; if (v.requestFullscreen) v.requestFullscreen().catch(function(){}); else if (v.webkitEnterFullscreen) try { v.webkitEnterFullscreen(); } catch(_){} };
+        window.addEventListener('keydown', function(e){ if (e.key === 'Escape') closePlayer(); });
+      })();
+    </script>
+    <script>
+      function setRowPlayEnabled(row, kind, ymd){
+        if (!row) return;
+        var btn = row.querySelector('[data-action="play-' + kind + '"]');
+        if (!btn) return;
+        btn.disabled = false;
+        btn.onclick = function(){ var suffix = (kind === 'day') ? '-daylight' : ''; openPlayer('/images/videos/' + ymd + suffix + '.mp4?v=' + Date.now()); };
+      }
+      function setRowCount(row, n){ var c = row && row.querySelector('.count'); if (c) c.textContent = String(n); }
+      function setStatus(msg){ var el = document.getElementById('status'); if (el) el.textContent = msg || ''; }
+      function reprocessDay(ymd, el){
+        setStatus('Reprocessing ' + ymd + ' (24h)…');
+        if (el) { el.disabled = true; }
+        fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){ var ok = !!(data && data.success); setStatus(ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''))); var row = el && el.closest ? el.closest('.day-row') : null; if (ok && row) setRowPlayEnabled(row, '24', ymd); if (ok) openPlayer('/images/videos/' + ymd + '.mp4?v=' + Date.now()); })
+          .catch(function(){ setStatus('Failed.'); })
+          .finally(function(){ if (el) el.disabled = false; });
+      }
+      function reprocessDaylight(ymd, el){
+        setStatus('Reprocessing daylight ' + ymd + '…');
+        if (el) { el.disabled = true; }
+        fetch('/api/reprocess-daylight/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){ var ok = !!(data && data.success); setStatus(ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''))); var row = el && el.closest ? el.closest('.day-row') : null; if (ok && row) setRowPlayEnabled(row, 'day', ymd); if (ok) openPlayer('/images/videos/' + ymd + '-daylight.mp4?v=' + Date.now()); })
+          .catch(function(){ setStatus('Failed.'); })
+          .finally(function(){ if (el) el.disabled = false; });
+      }
+      function deleteImagesForDay(ymd, el){
+        var row = el && el.closest ? el.closest('.day-row') : null;
+        try { var ok = window.confirm('Delete all photos for ' + ymd + '?'); if (!ok) return; } catch(_){}
+        setStatus('Deleting images for ' + ymd + '…');
+        if (el) el.disabled = true;
+        fetch('/api/delete-images/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){ var ok = !!(data && data.success); setStatus(ok ? ('Deleted ' + (data && typeof data.deleted === 'number' ? data.deleted : 0) + ' for ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''))); if (ok && row) { setRowCount(row, 0); var reBtns = row.querySelectorAll('[data-action=\"re-24\"], [data-action=\"re-day\"]'); for (var i=0;i<reBtns.length;i++){ reBtns[i].disabled = true; } } })
+          .catch(function(){ setStatus('Failed.'); })
+          .finally(function(){ if (el) el.disabled = false; });
+      }
+    </script>
+  </head>
+  <body>
+    <header>
+      <div class="header-row">
+        <h1>Webcam Snapshot Service</h1>
+        <button id="theme-btn" class="icon-btn" onclick="__cycleTheme()" aria-label="Toggle theme" title="Theme: Auto"><span id="theme-icon" aria-hidden="true">🖥️</span></button>
+      </div>
+      <div class="meta">Target: <code>${TARGET_URL}</code></div>
+    </header>
+    <section class="summary">
+      <div class="line"><strong>Current image</strong>${latestUrl ? `: <img src="${latestUrl}" alt="Latest" />` : ': none yet'}</div>
+      <div class="line"><strong>Video total daylight</strong>: ${totalDaylight}</div>
+      <div class="line"><strong>Video total 24h</strong>: ${total24h}</div>
+      <div id="status" class="meta" aria-live="polite"></div>
+    </section>
+    <ul class="days" aria-label="Days">
+      ${rowsHtml || '<li class="day-row"><span class="name">No days yet</span></li>'}
+    </ul>
+    <div id="player-overlay" hidden>
+      <div class="player-wrap">
+        <video id="player-video" controls playsinline></video>
+        <div class="player-actions">
+          <button class="btn" onclick="playerFullscreen()">Fullscreen</button>
+          <button class="btn" onclick="closePlayer()">Close</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(200).send(body);
+    } catch (e) {
+      // fall back to previous UI on any error
+    }
     const latest = getLatestImagePath();
     const latestUrl = latest ? `/images/${latest}` : null;
     const _allDaily = getDailyVideosSorted();
