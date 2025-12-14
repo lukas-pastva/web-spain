@@ -2160,6 +2160,48 @@ app.get('/day/:ymd', (req, res) => {
       .actions { margin: 8px 0 16px; display: flex; gap: 8px; align-items: center; }
       .btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-radius: 4px; cursor: pointer; }
       .btn[disabled] { opacity: 0.6; cursor: progress; }
+      /* Simple tooltip bubble for any element with data-tip */
+      [data-tip] { position: relative; }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        transform: translateX(-50%) scale(0.98);
+        background: rgba(0,0,0,0.85);
+        color: #fff;
+        padding: 6px 8px;
+        border-radius: 6px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+        width: max-content;
+        max-width: 260px;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: pre-line;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease, transform 120ms ease;
+        z-index: 10000;
+      }
+      [data-tip]::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 2px);
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: rgba(0,0,0,0.85);
+        opacity: 0;
+        transition: opacity 120ms ease;
+        z-index: 10001;
+      }
+      [data-tip]:hover::after,
+      [data-tip]:focus-visible::after,
+      [data-tip]:hover::before,
+      [data-tip]:focus-visible::before {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+      }
     </style>
     <script>
       (function() {
