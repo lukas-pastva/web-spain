@@ -1211,6 +1211,10 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
   const fullStat = (() => { try { return fullExists ? fs.statSync(FULL_VIDEO_PATH) : null; } catch (_) { return null; } })();
   const fullUrl = fullExists ? `/images/videos/${encodeURIComponent(FULL_VIDEO_NAME)}?v=${fullStat ? Math.floor(fullStat.mtimeMs) : Date.now()}` : null;
+  // Full daylight aggregated video (optional)
+  const fullDaylightExists = (() => { try { return fs.existsSync(FULL_DAYLIGHT_PATH); } catch (_) { return false; } })();
+  const fullDaylightStat = (() => { try { return fullDaylightExists ? fs.statSync(FULL_DAYLIGHT_PATH) : null; } catch (_) { return null; } })();
+  const fullDaylightUrl = fullDaylightExists ? `/images/videos/${encodeURIComponent(FULL_DAYLIGHT_NAME)}?v=${fullDaylightStat ? Math.floor(fullDaylightStat.mtimeMs) : Date.now()}` : null;
   // Dates for videos/daylight sections (image browsing removed)
   const todayDate = ymdToday();
   const allDates = getProcessedDateFolders();
@@ -1553,6 +1557,15 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
           .then(function(data){
             var ok = !!(data && data.success);
             if (status) status.textContent = ok ? 'Full daylight video merged.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (ok) {
+              try {
+                var url = '/images/videos/' + encodeURIComponent('${FULL_DAYLIGHT_NAME}') + '?v=' + Date.now();
+                var container = document.getElementById('full-daylight-container');
+                if (container) {
+                  container.innerHTML = '<div class="full"><video id="full-daylight-video" src="' + url + '" controls preload="metadata" playsinline></video><div class="player-actions"><button class="btn" onclick="(function(){var v=document.getElementById(\'full-daylight-video\'); if (v && v.requestFullscreen) v.requestFullscreen();})();">Fullscreen</button></div></div>';
+                }
+              } catch (_) { /* ignore */ }
+            }
           })
           .catch(function(){ if (status) status.textContent = 'Failed to merge.'; })
           .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Merge all daylight videos'; }});
@@ -1739,6 +1752,9 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
           <button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button>
           <button class="btn" id="reprocess-full-daylight-btn" onclick="reprocessFullDaylight(this)">Merge all daylight videos</button>
           <span id="reprocess-daylight-all-status" class="meta"></span>
+        </div>
+        <div id="full-daylight-container">
+          ${fullDaylightUrl ? `<div class=\"full\"><video id=\"full-daylight-video\" src=\"${fullDaylightUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-daylight-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button></div></div>` : '<p>No full daylight video yet. Click “Merge all daylight videos”.</p>'}
         </div>
         <p class="hint">Missing daylight videos are generated from images; merging uses ffmpeg to concatenate existing daylight videos only.</p>
       </section>
