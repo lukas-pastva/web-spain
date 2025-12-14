@@ -1497,20 +1497,38 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       function setStatus(msg){ var el = document.getElementById('status'); if (el) el.textContent = msg || ''; }
       function reprocessDay(ymd, el){
         setStatus('Reprocessing ' + ymd + ' (24h)…');
+        try { openModal('Reprocessing ' + ymd + ' (24h)…'); } catch(_){}
         if (el) { el.disabled = true; }
         fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
-          .then(function(data){ var ok = !!(data && data.success); setStatus(ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''))); var row = el && el.closest ? el.closest('.day-row') : null; if (ok && row) setRowPlayEnabled(row, '24', ymd); if (ok) openPlayer('/images/videos/' + ymd + '.mp4?v=' + Date.now()); })
-          .catch(function(){ setStatus('Failed.'); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            var msg = ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            setStatus(msg);
+            try { setModalText(msg); } catch(_){}
+            var row = el && el.closest ? el.closest('.day-row') : null;
+            if (ok && row) setRowPlayEnabled(row, '24', ymd);
+            if (ok) { try { closeModal(); } catch(_){} openPlayer('/images/videos/' + ymd + '.mp4?v=' + Date.now()); }
+          })
+          .catch(function(){ setStatus('Failed.'); try { setModalText('Failed.'); } catch(_){} })
           .finally(function(){ if (el) el.disabled = false; });
       }
       function reprocessDaylight(ymd, el){
         setStatus('Reprocessing daylight ' + ymd + '…');
+        try { openModal('Reprocessing daylight ' + ymd + '…'); } catch(_){}
         if (el) { el.disabled = true; }
         fetch('/api/reprocess-daylight/' + encodeURIComponent(ymd), { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
-          .then(function(data){ var ok = !!(data && data.success); setStatus(ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''))); var row = el && el.closest ? el.closest('.day-row') : null; if (ok && row) setRowPlayEnabled(row, 'day', ymd); if (ok) openPlayer('/images/videos/' + ymd + '-daylight.mp4?v=' + Date.now()); })
-          .catch(function(){ setStatus('Failed.'); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            var msg = ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            setStatus(msg);
+            try { setModalText(msg); } catch(_){}
+            var row = el && el.closest ? el.closest('.day-row') : null;
+            if (ok && row) setRowPlayEnabled(row, 'day', ymd);
+            if (ok) { try { closeModal(); } catch(_){} openPlayer('/images/videos/' + ymd + '-daylight.mp4?v=' + Date.now()); }
+          })
+          .catch(function(){ setStatus('Failed.'); try { setModalText('Failed.'); } catch(_){} })
           .finally(function(){ if (el) el.disabled = false; });
       }
       function deleteImagesForDay(ymd, el){
@@ -1549,6 +1567,17 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         <div class="player-actions">
           <button class="btn" onclick="playerFullscreen()">Fullscreen</button>
           <button class="btn" onclick="closePlayer()">Close</button>
+        </div>
+    </div>
+    </div>
+    <div id="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-text">
+      <div class="modal">
+        <div class="modal-body">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="modal-text" id="modal-text" aria-live="polite">Working…</div>
+        </div>
+        <div class="modal-actions">
+          <button id="modal-close-btn" class="btn" onclick="closeModal()">Close</button>
         </div>
       </div>
     </div>
