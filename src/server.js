@@ -1971,6 +1971,70 @@ app.get('/day/:ymd', (req, res) => {
           .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || btn.textContent; }});
       }
     </script>
+    <script>
+      // Daylight reprocess helpers (missing in day view previously)
+      function reprocessDaylight(ymd, el){
+        var status = document.getElementById('reprocess-daylight-status');
+        if (status) status.textContent = 'Reprocessing daylight ' + ymd + '…';
+        if (el) { el.disabled = true; el.dataset._label = el.textContent; el.textContent = 'Reprocessing…'; }
+        fetch('/api/reprocess-daylight/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (ok && el) {
+              var row = el.closest && el.closest('.video-row');
+              if (row) {
+                var buttons = row.querySelectorAll('button.btn');
+                for (var i = 0; i < buttons.length; i++) {
+                  if (/^Play$/i.test(buttons[i].textContent || '')) {
+                    buttons[i].disabled = false;
+                    (function(btn){ btn.onclick = function(){ openPlayer('/images/videos/' + ymd + '-daylight.mp4?v=' + Date.now()); }; })(buttons[i]);
+                    break;
+                  }
+                }
+              }
+              openPlayer('/images/videos/' + ymd + '-daylight.mp4?v=' + Date.now());
+            }
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Reprocess'; }});
+      }
+      function reprocessDaylightAll(el){
+        var btn = el || document.getElementById('reprocess-daylight-all-btn');
+        var status = document.getElementById('reprocess-daylight-all-status');
+        if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Starting…'; }
+        if (status) status.textContent = 'Starting daylight queue…';
+        fetch('/api/reprocess-daylight-all', { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (!ok && status) status.textContent = 'Nothing to do.';
+            if (ok) {
+              updateDaylightQueueStatus();
+              if (!window.__dlTimer) window.__dlTimer = setInterval(updateDaylightQueueStatus, 3000);
+            }
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed to start queue.'; })
+          .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Generate missing daylight videos'; }});
+      }
+      function updateDaylightQueueStatus(){
+        var status = document.getElementById('reprocess-daylight-all-status');
+        fetch('/api/reprocess-daylight-status')
+          .then(function(r){ return r.json().catch(function(){ return { running:false, completed:0, total:0, remaining:0 }; }); })
+          .then(function(s){
+            if (!status) return;
+            if (!s || !s.running) {
+              status.textContent = 'Idle' + (s && s.completed ? (' • Completed: ' + s.completed + '/' + (s.total||s.completed)) : '');
+              if (window.__dlTimer) { clearInterval(window.__dlTimer); window.__dlTimer = null; }
+              return;
+            }
+            var cur = s.current ? (' • Now: ' + s.current) : '';
+            status.textContent = 'Running • Completed ' + s.completed + ' of ' + s.total + ' • Remaining ' + s.remaining + cur;
+          })
+          .catch(function(){ if (status) status.textContent = 'Queue status unavailable'; });
+      }
+    </script>
     <style>
       /* Overlay for in-app video playback */
       #player-overlay[hidden] { display: none !important; }
@@ -2028,6 +2092,8 @@ app.get('/day/:ymd', (req, res) => {
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="false" class="tab">Live</button>
       <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="true" class="tab">Stored</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
+      <button id="tab-daylight" role="tab" aria-controls="panel-daylight" aria-selected="false" class="tab">Daylight</button>
+      <button id="tab-lightall" role="tab" aria-controls="panel-lightall" aria-selected="false" class="tab">Daylight All</button>
       <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
     </div>
     <div class="tabpanels">
