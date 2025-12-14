@@ -1570,12 +1570,8 @@ app.get('/', (req, res) => {
         ${videoRowsHtml ? `<ul class="video-list">${videoRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
       <section id="panel-daylight" class="tabpanel" role="tabpanel" aria-labelledby="tab-daylight" hidden aria-hidden="true">
-        <div class="actions">
-          <button class="btn" ${daylightVideoExistsForDate(ymd) ? '' : 'disabled'} onclick="${daylightVideoExistsForDate(ymd) ? `openPlayer('/images/videos/${ymd}-daylight.mp4?v=${Date.now()}')` : ''}">Play</button>
-          <button class="btn" ${imgs.length ? '' : 'disabled'} onclick="reprocessDaylight('${ymd}', this)">Reprocess daylight</button>
-          <span class="meta" id="reprocess-daylight-status"></span>
-        </div>
-        <p class="hint">Daylight window: ${DAYLIGHT_START_LOCAL}–${DAYLIGHT_END_LOCAL} (${DAYLIGHT_TZ}).</p>
+        <div class="meta" id="reprocess-daylight-status"></div>
+        ${daylightRowsHtml ? `<ul class="video-list">${daylightRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
       <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-labelledby="tab-lightall" hidden aria-hidden="true">
         <div class="actions"><button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button><span id="reprocess-daylight-all-status" class="meta"></span></div>
@@ -1802,8 +1798,12 @@ app.get('/day/:ymd', (req, res) => {
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
       </section>
       <section id="panel-daylight" class="tabpanel" role="tabpanel" aria-labelledby="tab-daylight" hidden aria-hidden="true">
-        <div class="meta" id="reprocess-daylight-status"></div>
-        ${daylightRowsHtml ? `<ul class="video-list">${daylightRowsHtml}</ul>` : '<p>No days yet.</p>'}
+        <div class="actions">
+          <button class="btn" ${daylightVideoExistsForDate(ymd) ? '' : 'disabled'} onclick="${daylightVideoExistsForDate(ymd) ? `openPlayer('/images/videos/${ymd}-daylight.mp4?v=${Date.now()}')` : ''}">Play</button>
+          <button class="btn" ${imgs.length ? '' : 'disabled'} onclick="reprocessDaylight('${ymd}', this)">Reprocess daylight</button>
+          <span class="meta" id="reprocess-daylight-status"></span>
+        </div>
+        <p class="hint">Daylight window: ${DAYLIGHT_START_LOCAL}–${DAYLIGHT_END_LOCAL} (${DAYLIGHT_TZ}).</p>
       </section>
       <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-labelledby="tab-lightall" hidden aria-hidden="true">
         <div class="actions"><button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button><span id="reprocess-daylight-all-status" class="meta"></span></div>
