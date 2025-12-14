@@ -1269,10 +1269,13 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   const tempA = (typeof wxA.tempC === 'number' ? `${Math.round(wxA.tempC)}°C` : '—');
   const tempB = (typeof wxB.tempC === 'number' ? `${Math.round(wxB.tempC)}°C` : '—');
   const wxUpdated = wxState.updatedAt ? new Date(wxState.updatedAt).toLocaleTimeString() : '—';
-  // Temperature overlay values
-  const tempVal = (typeof wxA.tempC === 'number' ? wxA.tempC : null);
-  const tempColor = __tempToHex(tempVal);
-  const tempDisplay = (typeof tempVal === 'number' ? `${Math.round(tempVal)}°C` : '—');
+  // Temperature overlay values for both locations
+  const tempValA = (typeof wxA.tempC === 'number' ? wxA.tempC : null);
+  const tempValB = (typeof wxB.tempC === 'number' ? wxB.tempC : null);
+  const tempColorA = __tempToHex(tempValA);
+  const tempColorB = __tempToHex(tempValB);
+  const tempDisplayA = (typeof tempValA === 'number' ? `${Math.round(tempValA)}°C` : '—');
+  const tempDisplayB = (typeof tempValB === 'number' ? `${Math.round(tempValB)}°C` : '—');
 
   const body = `<!doctype html>
 <html lang="en">
@@ -1358,7 +1361,9 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       .full video { width: 100%; height: auto; display: block; background: #000; }
       /* Live image overlay: temperature */
       .live-wrap { position: relative; display: inline-block; }
-      .temp-badge { position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.35); backdrop-filter: blur(2px); }
+      .temp-badge { position: absolute; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.35); backdrop-filter: blur(2px); }
+      .temp-badge.badge-right { top: 8px; right: 8px; }
+      .temp-badge.badge-left { top: 8px; left: 8px; }
       .temp-icon { width: 18px; height: 18px; color: var(--temp-color, #ccc); filter: drop-shadow(0 0 2px rgba(255,255,255,0.7)); }
       .temp-label { color: #ffffff; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
     </style>
@@ -1702,12 +1707,20 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         ${latestUrl ? `
         <div class="live-wrap">
           <img src="${latestUrl}" alt="Latest screenshot" />
-          <div class="temp-badge" style="--temp-color: ${tempColor}" title="Temperature: ${tempDisplay}">
+          ${tempDisplayA ? `
+          <div class="temp-badge badge-right" style="--temp-color: ${tempColorA}" title="Alicante: ${tempDisplayA}">
             <svg class="temp-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="currentColor" d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0ZM12 22a6 6 0 0 1-3-11.2V5a3 3 0 0 1 6 0v5.8A6 6 0 0 1 12 22Zm0-9a3 3 0 0 0-1 .17V5a1 1 0 0 1 2 0v8.17A3 3 0 0 0 12 13Z"/>
+              <path fill="currentColor" d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0ZM12 22a6 6 0 0 1-3-11.2V5a3 3 0 0 1 6 0v5.8A6 6 0 0 1 12 22Zm0-9a 3 3 0 0 0-1 .17V5a1 1 0 0 1 2 0v8.17A3 3 0 0 0 12 13Z"/>
             </svg>
-            <span class="temp-label">${tempDisplay}</span>
-          </div>
+            <span class="temp-label">Alicante ${tempDisplayA}</span>
+          </div>` : ''}
+          ${tempDisplayB ? `
+          <div class="temp-badge badge-left" style="--temp-color: ${tempColorB}" title="Bratislava: ${tempDisplayB}">
+            <svg class="temp-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0ZM12 22a6 6 0 0 1-3-11.2V5a3 3 0 0 1 6 0v5.8A6 6 0 0 1 12 22Zm0-9a 3 3 0 0 0-1 .17V5a1 1 0 0 1 2 0v8.17A3 3 0 0 0 12 13Z"/>
+            </svg>
+            <span class="temp-label">Bratislava ${tempDisplayB}</span>
+          </div>` : ''}
         </div>
         ` : '<p>No screenshots yet. First capture will appear soon…</p>'}
       </section>
