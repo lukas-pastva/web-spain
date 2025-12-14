@@ -1852,12 +1852,15 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       function reprocessDay(ymd, el){
         var status = document.getElementById('reprocess-status');
         if (status) status.textContent = 'Reprocessing ' + ymd + '…';
+        try { openModal('Reprocessing ' + ymd + '…'); } catch(_){}
         if (el) { el.disabled = true; el.dataset._label = el.textContent; el.textContent = 'Reprocessing…'; }
         fetch('/api/reprocess/' + encodeURIComponent(ymd), { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
           .then(function(data){
             var ok = !!(data && data.success);
-            if (status) status.textContent = ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            var msg = ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (status) status.textContent = msg;
+            try { setModalText(msg); } catch(_){}
             // If successful, enable Play in the same row immediately
             if (ok && el) {
               var row = el.closest('.video-row');
@@ -1872,10 +1875,11 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
                 }
               }
               // Also open the freshly generated video now
+              try { closeModal(); } catch(_){}
               openPlayer('/images/videos/' + ymd + '.mp4?v=' + Date.now());
             }
           })
-          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; try { setModalText('Failed.'); } catch(_){} })
           .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Reprocess'; }});
       }
       // Delete all images for a given date (homepage Videos tab)
