@@ -213,10 +213,74 @@ function filterFilesToDaylight(ymd, files) {
     return mins >= minStart && mins <= minEnd;
   });
 }
+
+// Compute Alicante sunrise/sunset minutes-of-day for a specific date (YYYY-MM-DD)
+async function sunriseSunsetMinutesForDate(ymd) {
+  // Fallback to static window if anything fails
+  const fallback = () => {
+    const s = parseHm(DAYLIGHT_START_LOCAL) || { h: 6, m: 0 };
+    const e = parseHm(DAYLIGHT_END_LOCAL) || { h: 21, m: 30 };
+    return { startMin: hmToMinutes(s.h, s.m), endMin: hmToMinutes(e.h, e.m), source: 'fallback' };
+  };
+  try {
+    const base = 'https://api.open-meteo.com/v1/forecast';
+    const params = new URLSearchParams({
+      latitude: String(ALICANTE.lat),
+      longitude: String(ALICANTE.lon),
+      timezone: String(ALICANTE.tz || DAYLIGHT_TZ),
+      daily: 'sunrise,sunset',
+      start_date: ymd,
+      end_date: ymd,
+    });
+    const url = `${base}?${params.toString()}`;
+    const json = await httpGetJson(url);
+    const sr = (() => { try { return json.daily.sunrise[0]; } catch (_) { return null; } })();
+    const ss = (() => { try { return json.daily.sunset[0]; } catch (_) { return null; } })();
+    const toMin = (s) => {
+      if (typeof s !== 'string') return null;
+      const t = s.includes('T') ? s.split('T')[1] : s; // 'HH:MM' (in Europe/Madrid per timezone param)
+      const parts = t.split(':');
+      if (!parts || parts.length < 2) return null;
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (!isFinite(h) || !isFinite(m)) return null;
+      return hmToMinutes(Math.max(0, Math.min(23, h)), Math.max(0, Math.min(59, m)));
+    };
+    const startMin = toMin(sr);
+    const endMin = toMin(ss);
+    if (typeof startMin === 'number' && typeof endMin === 'number' && endMin > startMin) {
+      return { startMin, endMin, source: 'open-meteo' };
+    }
+    return fallback();
+  } catch (e) {
+    console.warn('[daylight] Failed to fetch sunrise/sunset for', ymd, e && e.message ? e.message : e);
+    return fallback();
+  }
+}
+
+function filterFilesToWindow(files, startMin, endMin) {
+  return files.filter(f => {
+    const ms = f.stat.mtimeMs;
+    const mins = minutesOfLocalTz(ms);
+    if (mins < 0) return false;
+    return mins >= startMin && mins <= endMin;
+  });
+}
 async function generateDaylightVideo(ymd) {
   const imgs = listImagesForDate(ymd);
   if (!imgs || !imgs.length) return false;
-  const daylight = filterFilesToDaylight(ymd, imgs);
+  // Prefer dynamic sunrise/sunset for Alicante; fall back to static window
+  let startMin, endMin;
+  try {
+    const win = await sunriseSunsetMinutesForDate(ymd);
+    startMin = win.startMin; endMin = win.endMin;
+  } catch (_) {
+    const s = parseHm(DAYLIGHT_START_LOCAL) || { h: 6, m: 0 };
+    const e = parseHm(DAYLIGHT_END_LOCAL) || { h: 21, m: 30 };
+    startMin = hmToMinutes(s.h, s.m);
+    endMin = hmToMinutes(e.h, e.m);
+  }
+  const daylight = filterFilesToWindow(imgs, startMin, endMin);
   if (!daylight.length) { console.warn(`[video] No daylight images for ${ymd}`); return false; }
   return generateVideoFromFiles(ymd, daylight, daylightVideoPathForDate(ymd));
 }
