@@ -1677,18 +1677,18 @@ app.get('/', (req, res) => {
       </select>
     </div>
     <div class="tabpanels">
-      <section id="panel-live" class="tabpanel" role="tabpanel" aria-labelledby="tab-live" aria-hidden="false">
+      <section id="panel-live" class="tabpanel" role="tabpanel" aria-label="Live" aria-hidden="false">
         ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
       </section>
-      <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
+      <section id="panel-videos" class="tabpanel" role="tabpanel" aria-label="Videos" hidden aria-hidden="true">
         <div class="meta" id="reprocess-status"></div>
         ${videoRowsHtml ? `<ul class="video-list">${videoRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
-      <section id="panel-daylight" class="tabpanel" role="tabpanel" aria-labelledby="tab-daylight" hidden aria-hidden="true">
+      <section id="panel-daylight" class="tabpanel" role="tabpanel" aria-label="Daylight" hidden aria-hidden="true">
         <div class="meta" id="reprocess-daylight-status"></div>
         ${daylightRowsHtml ? `<ul class="video-list">${daylightRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
-      <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-labelledby="tab-lightall" hidden aria-hidden="true">
+      <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-label="Daylight All" hidden aria-hidden="true">
         <div class="actions">
           <button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button>
           <button class="btn" id="reprocess-full-daylight-btn" onclick="reprocessFullDaylight(this)">Merge all daylight videos</button>
@@ -1696,7 +1696,7 @@ app.get('/', (req, res) => {
         </div>
         <p class="hint">Missing daylight videos are generated from images; merging uses ffmpeg to concatenate existing daylight videos only.</p>
       </section>
-      <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
+      <section id="panel-full" class="tabpanel" role="tabpanel" aria-label="Full-time" hidden aria-hidden="true">
         ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
       </section>
     </div>
