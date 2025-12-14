@@ -1199,11 +1199,11 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   }
 });
 
-// Simple index page that shows the latest screenshot
-app.get('/', (req, res) => {
-  const latest = getLatestImagePath();
-  const latestUrl = latest ? `/images/${latest}` : null;
-  const _allDaily = getDailyVideosSorted();
+  // Simple index page that shows the latest screenshot
+  app.get('/', (req, res) => {
+    const latest = getLatestImagePath();
+    const latestUrl = latest ? `/images/${latest}` : null;
+    const _allDaily = getDailyVideosSorted();
   const vids = _allDaily.slice(0, 30);
   const hasAnyDaily = _allDaily.length > 0;
   const fullExists = (() => { try { return fs.existsSync(FULL_VIDEO_PATH); } catch (_) { return false; } })();
@@ -1212,6 +1212,21 @@ app.get('/', (req, res) => {
   // Dates for videos/daylight sections (image browsing removed)
   const todayDate = ymdToday();
   const allDates = getProcessedDateFolders();
+  // Temperature color (white at <=0°C to red at >=40°C)
+  const wxA = wxState.alicante || {};
+  const tempVal = (typeof wxA.tempC === 'number' ? wxA.tempC : null);
+  function __tempToHex(t) {
+    if (typeof t !== 'number' || !isFinite(t)) return '#cccccc';
+    const cl = Math.max(0, Math.min(40, t));
+    const frac = cl / 40;
+    const r = 255;
+    const g = Math.round(255 * (1 - frac));
+    const b = Math.round(255 * (1 - frac));
+    const h = (n) => n.toString(16).padStart(2, '0');
+    return `#${h(r)}${h(g)}${h(b)}`;
+  }
+  const tempColor = __tempToHex(tempVal);
+  const tempDisplay = (typeof tempVal === 'number' ? `${Math.round(tempVal)}°C` : '—');
   // Build daily rows with Play, Reprocess, and Delete Images actions (no thumbnails)
   const videoRowsHtml = allDates.map((d) => {
     const count = listImagesForDate(d).length;
@@ -1341,6 +1356,11 @@ app.get('/', (req, res) => {
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
       .tabpanels { border: 1px solid var(--button-border); padding: 12px; border-radius: 6px; }
       .full video { width: 100%; height: auto; display: block; background: #000; }
+      /* Live image overlay: temperature */
+      .live-wrap { position: relative; display: inline-block; }
+      .temp-badge { position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.35); backdrop-filter: blur(2px); }
+      .temp-icon { width: 18px; height: 18px; color: var(--temp-color, #ccc); filter: drop-shadow(0 0 2px rgba(255,255,255,0.7)); }
+      .temp-label { color: #ffffff; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
     </style>
     <script>
       (function() {
@@ -1679,7 +1699,17 @@ app.get('/', (req, res) => {
     </div>
     <div class="tabpanels">
       <section id="panel-live" class="tabpanel" role="tabpanel" aria-label="Live" aria-hidden="false">
-        ${latestUrl ? `<img src="${latestUrl}" alt="Latest screenshot" />` : '<p>No screenshots yet. First capture will appear soon…</p>'}
+        ${latestUrl ? `
+        <div class="live-wrap">
+          <img src="${latestUrl}" alt="Latest screenshot" />
+          <div class="temp-badge" style="--temp-color: ${tempColor}" title="Temperature: ${tempDisplay}">
+            <svg class="temp-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0ZM12 22a6 6 0 0 1-3-11.2V5a3 3 0 0 1 6 0v5.8A6 6 0 0 1 12 22Zm0-9a3 3 0 0 0-1 .17V5a1 1 0 0 1 2 0v8.17A3 3 0 0 0 12 13Z"/>
+            </svg>
+            <span class="temp-label">${tempDisplay}</span>
+          </div>
+        </div>
+        ` : '<p>No screenshots yet. First capture will appear soon…</p>'}
       </section>
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-label="Videos" hidden aria-hidden="true">
         <div class="meta" id="reprocess-status"></div>
