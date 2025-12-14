@@ -1731,7 +1731,7 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       header { margin-bottom: 16px; }
       header .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       img { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 4px; }
-      .meta { color: var(--muted); font-size: 0.9em; margin: 8px 0; }
+      .meta { color: var(--muted); font-size: 0.9em; margin: 8px 0; overflow-wrap: anywhere; }
       .grid { display: grid; gap: 16px; }
       .rows { display: grid; gap: 24px; }
       /* Weather panel */
@@ -2011,11 +2011,14 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         var status = document.getElementById('reprocess-full-status');
         if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Reprocessing…'; }
         if (status) status.textContent = 'Reprocessing full-time video…';
+        try { openModal('Reprocessing full-time video…'); } catch(_){}
         fetch('/api/reprocess-full', { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
           .then(function(data){
             var ok = !!(data && data.success);
-            if (status) status.textContent = ok ? 'Full-time video updated.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            var msg = ok ? 'Full-time video updated.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (status) status.textContent = msg;
+            try { setModalText(msg); } catch(_){}
             if (ok) {
               var v = document.getElementById('full-video');
               if (v) {
@@ -2025,9 +2028,10 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
               } else {
                 try { location.reload(); } catch(_){}
               }
+              try { closeModal(); } catch(_){}
             }
           })
-          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; try { setModalText('Failed.'); } catch(_){} })
           .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Reprocess'; }});
       }
     </script>
@@ -2038,11 +2042,14 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         var status = document.getElementById('reprocess-full-status');
         if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Reprocessing…'; }
         if (status) status.textContent = 'Reprocessing full-time video…';
+        try { openModal('Reprocessing full-time video…'); } catch(_){}
         fetch('/api/reprocess-full', { method: 'POST' })
           .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
           .then(function(data){
             var ok = !!(data && data.success);
-            if (status) status.textContent = ok ? 'Full-time video updated.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            var msg = ok ? 'Full-time video updated.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (status) status.textContent = msg;
+            try { setModalText(msg); } catch(_){}
             if (ok) {
               var v = document.getElementById('full-video');
               if (v) {
@@ -2052,9 +2059,10 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
               } else {
                 try { location.reload(); } catch(_){}
               }
+              try { closeModal(); } catch(_){}
             }
           })
-          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; try { setModalText('Failed.'); } catch(_){} })
           .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Reprocess'; }});
       }
     </script>
@@ -2279,9 +2287,24 @@ app.get('/day/:ymd', (req, res) => {
       .videos .caption { font-size: 0.85em; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .full video { width: 100%; height: auto; display: block; background: #000; }
       .hint { color: var(--muted); font-size: 0.9em; margin: 0 0 8px; }
-      .actions { margin: 8px 0 16px; display: flex; gap: 8px; align-items: center; }
+      .actions { margin: 8px 0 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .actions .meta { flex-basis: 100%; }
       .btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); padding: 6px 10px; border-radius: 4px; cursor: pointer; }
       .btn[disabled] { opacity: 0.6; cursor: progress; }
+      /* Overlay for in-app video playback (and progress modal) */
+      #player-overlay[hidden], #modal-overlay[hidden] { display: none !important; }
+      #player-overlay, #modal-overlay { position: fixed; inset: 0; display: grid; place-items: center; z-index: 20000; }
+      #player-overlay { background: rgba(0,0,0,0.85); }
+      #modal-overlay { background: rgba(0,0,0,0.6); z-index: 21000; }
+      .player-wrap { width: min(96vw, 1200px); }
+      .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
+      .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+      .modal { width: min(92vw, 420px); background: var(--bg); color: var(--fg); border: 1px solid var(--button-border); border-radius: 10px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+      .modal-body { display: flex; align-items: center; gap: 12px; }
+      .modal-text { line-height: 1.4; }
+      .modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; }
+      .spinner { width: 20px; height: 20px; border-radius: 999px; border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
       /* Simple tooltip bubble for any element with data-tip */
       [data-tip] { position: relative; }
       [data-tip]::after {
