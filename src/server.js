@@ -1421,7 +1421,7 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       .icon-btn:hover { filter: brightness(0.98); }
       .icon-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
       #player-overlay[hidden] { display: none !important; }
-      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 9999; }
+      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 20000; }
       .player-wrap { width: min(96vw, 1200px); }
       .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
       .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
@@ -1970,7 +1970,7 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
     <style>
       /* Overlay for in-app video playback */
       #player-overlay[hidden] { display: none !important; }
-      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 9999; }
+      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 20000; }
       .player-wrap { width: min(96vw, 1200px); }
       .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
       .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
@@ -2346,7 +2346,7 @@ app.get('/day/:ymd', (req, res) => {
     <style>
       /* Overlay for in-app video playback */
       #player-overlay[hidden] { display: none !important; }
-      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 9999; }
+      #player-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: grid; place-items: center; z-index: 20000; }
       .player-wrap { width: min(96vw, 1200px); }
       .player-wrap video { width: 100%; max-height: 80vh; background: #000; display: block; }
       .player-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
