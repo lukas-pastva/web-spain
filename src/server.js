@@ -13,6 +13,8 @@ const VIDEOS_DIR = path.join(OUTPUT_DIR, 'videos');
 const TMP_DIR = path.join(OUTPUT_DIR, '.tmp');
 const FULL_VIDEO_NAME = process.env.FULL_VIDEO_NAME || 'full.mp4';
 const FULL_VIDEO_PATH = path.join(VIDEOS_DIR, FULL_VIDEO_NAME);
+const FULL_DAYLIGHT_NAME = process.env.FULL_DAYLIGHT_NAME || 'full-daylight.mp4';
+const FULL_DAYLIGHT_PATH = path.join(VIDEOS_DIR, FULL_DAYLIGHT_NAME);
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
 // Daylight-only window config (local clock for target location)
@@ -900,6 +902,17 @@ function getDailyVideosSorted() {
   } catch (_) { return []; }
 }
 
+// Only YYYY-MM-DD-daylight.mp4 daily daylight videos
+function getDaylightDailyVideosSorted() {
+  try {
+    const re = /^\d{4}-\d{2}-\d{2}-daylight\.mp4$/i;
+    return fs.readdirSync(VIDEOS_DIR)
+      .filter(name => re.test(name))
+      .map(name => ({ name, full: path.join(VIDEOS_DIR, name), stat: fs.statSync(path.join(VIDEOS_DIR, name)) }))
+      .sort((a, b) => b.name.localeCompare(a.name)); // newest first
+  } catch (_) { return []; }
+}
+
 async function mergeDailyVideosIntoFull() {
   const hasFfmpeg = await ffmpegAvailable();
   if (!hasFfmpeg) { console.warn('[merge] ffmpeg not available; skipping full merge'); return false; }
@@ -925,6 +938,34 @@ async function mergeDailyVideosIntoFull() {
   try { fs.unlinkSync(listPath); } catch (_) {}
   const ok = fs.existsSync(out);
   if (ok) console.log(`[merge] Full-time video updated at ${out}`);
+  return ok;
+}
+
+// Merge all YYYY-MM-DD-daylight.mp4 into a single full daylight video
+async function mergeDaylightVideosIntoFull() {
+  const hasFfmpeg = await ffmpegAvailable();
+  if (!hasFfmpeg) { console.warn('[merge] ffmpeg not available; skipping full daylight merge'); return false; }
+  const vids = getDaylightDailyVideosSorted()
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name)); // chronological
+  if (vids.length === 0) { console.log('[merge] No daylight daily videos to merge'); return false; }
+  ensureDir(VIDEOS_DIR);
+  ensureDir(TMP_DIR);
+  const listPath = path.join(TMP_DIR, 'concat-full-daylight.txt');
+  try { fs.unlinkSync(listPath); } catch (_) {}
+  const lines = vids.map(v => `file '${v.full.replace(/'/g, "'\\''")}'`).join('\n');
+  fs.writeFileSync(listPath, lines, 'utf8');
+  const out = FULL_DAYLIGHT_PATH;
+  const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-an', out];
+  console.log(`[merge] ffmpeg ${args.join(' ')}`);
+  await new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'inherit', 'inherit'] });
+    p.on('error', reject);
+    p.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+  }).catch((e) => console.warn(`[merge] Failed to create full daylight video: ${e && e.message ? e.message : e}`));
+  try { fs.unlinkSync(listPath); } catch (_) {}
+  const ok = fs.existsSync(out);
+  if (ok) console.log(`[merge] Full daylight video updated at ${out}`);
   return ok;
 }
 
@@ -1076,6 +1117,20 @@ app.post('/api/reprocess-full', async (req, res) => {
       return res.status(404).json({ success: false, error: 'No daily videos to merge' });
     }
     const ok = await mergeDailyVideosIntoFull();
+    return res.status(ok ? 200 : 500).json({ success: !!ok });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+  }
+});
+
+// API: Merge all daylight daily videos into a single full daylight video
+app.post('/api/reprocess-full-daylight', async (req, res) => {
+  try {
+    const daily = getDaylightDailyVideosSorted();
+    if (!daily || daily.length === 0) {
+      return res.status(404).json({ success: false, error: 'No daylight daily videos to merge' });
+    }
+    const ok = await mergeDaylightVideosIntoFull();
     return res.status(ok ? 200 : 500).json({ success: !!ok });
   } catch (e) {
     return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
@@ -1455,6 +1510,20 @@ app.get('/', (req, res) => {
           .catch(function(){ if (status) status.textContent = 'Failed to start queue.'; })
           .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Generate missing daylight videos'; }});
       }
+      function reprocessFullDaylight(el){
+        var btn = el || document.getElementById('reprocess-full-daylight-btn');
+        var status = document.getElementById('reprocess-daylight-all-status');
+        if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Merging…'; }
+        if (status) status.textContent = 'Merging all daylight videos…';
+        fetch('/api/reprocess-full-daylight', { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? 'Full daylight video merged.' : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed to merge.'; })
+          .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Merge all daylight videos'; }});
+      }
       function updateDaylightQueueStatus(){
         var status = document.getElementById('reprocess-daylight-all-status');
         fetch('/api/reprocess-daylight-status')
@@ -1621,8 +1690,12 @@ app.get('/', (req, res) => {
         ${daylightRowsHtml ? `<ul class="video-list">${daylightRowsHtml}</ul>` : '<p>No days yet.</p>'}
       </section>
       <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-labelledby="tab-lightall" hidden aria-hidden="true">
-        <div class="actions"><button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button><span id="reprocess-daylight-all-status" class="meta"></span></div>
-        <p class="hint">This runs a sequential queue to avoid overloading the system.</p>
+        <div class="actions">
+          <button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button>
+          <button class="btn" id="reprocess-full-daylight-btn" onclick="reprocessFullDaylight(this)">Merge all daylight videos</button>
+          <span id="reprocess-daylight-all-status" class="meta"></span>
+        </div>
+        <p class="hint">Missing daylight videos are generated from images; merging uses ffmpeg to concatenate existing daylight videos only.</p>
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
         ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
