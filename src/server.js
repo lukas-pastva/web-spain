@@ -727,13 +727,13 @@ async function captureOnce(options = {}) {
       const tA = typeof a.tempC === 'number' ? `${Math.round(a.tempC)}°C` : '—°C';
       const tB = typeof b.tempC === 'number' ? `${Math.round(b.tempC)}°C` : '—°C';
       const linesA = [
-        `${ALICANTE.name.split(',')[0]} • ${tA}`,
+        `${ALICANTE.name.split(',')[0]}`,
         `Sunrise ${fmtTime(a.sunrise)}`,
         `Sunset ${fmtTime(a.sunset)}`,
         `Day ${dayA}`,
       ];
       const linesB = [
-        `${BRATISLAVA.name.split(',')[0]} • ${tB}`,
+        `${BRATISLAVA.name.split(',')[0]}`,
         `Sunrise ${fmtTime(b.sunrise)}`,
         `Sunset ${fmtTime(b.sunset)}`,
         `Day ${dayB}`,
@@ -741,6 +741,8 @@ async function captureOnce(options = {}) {
       await overlayMultiTextOnImage(filePath, [
         { text: linesA.join('\n'), x: '20', y: '20' },
         { text: linesB.join('\n'), x: 'w-tw-20', y: '20' },
+        { text: tA, x: '20', y: 'h-th-20', fontsize: 26 },
+        { text: tB, x: 'w-tw-20', y: 'h-th-20', fontsize: 26 },
       ]);
     } catch (e) {
       console.warn('[overlay] Failed to stamp info:', e && e.message ? e.message : e);
