@@ -15,6 +15,10 @@ const FULL_VIDEO_NAME = process.env.FULL_VIDEO_NAME || 'full.mp4';
 const FULL_VIDEO_PATH = path.join(VIDEOS_DIR, FULL_VIDEO_NAME);
 const IMAGE_FORMAT = (process.env.IMAGE_FORMAT || 'jpeg').toLowerCase(); // 'jpeg' or 'png'
 const JPEG_QUALITY = parseInt(process.env.JPEG_QUALITY || '80', 10); // 0-100
+// Daylight-only window config (local clock for target location)
+const DAYLIGHT_TZ = process.env.DAYLIGHT_TZ || 'Europe/Madrid';
+const DAYLIGHT_START_LOCAL = process.env.DAYLIGHT_START_LOCAL || '06:00';
+const DAYLIGHT_END_LOCAL = process.env.DAYLIGHT_END_LOCAL || '21:30';
 // Weather/astronomy settings
 const WX_REFRESH_MS = parseInt(process.env.WX_REFRESH_MS || '600000', 10); // 10 minutes
 // Alicante, Spain
@@ -83,6 +87,14 @@ function videoExistsForDate(ymd) {
   try { return fs.existsSync(videoPathForDate(ymd)); } catch (_) { return false; }
 }
 
+// Daylight-only video naming helpers
+function daylightVideoPathForDate(ymd) {
+  return path.join(VIDEOS_DIR, `${ymd}-daylight.mp4`);
+}
+function daylightVideoExistsForDate(ymd) {
+  try { return fs.existsSync(daylightVideoPathForDate(ymd)); } catch (_) { return false; }
+}
+
 function ensureDir(p) { try { fs.mkdirSync(p, { recursive: true }); } catch (_) {} }
 
 // Create a numbered sequence of symlinks for ffmpeg under a temp dir
@@ -123,7 +135,8 @@ function ffmpegAvailable() {
   });
 }
 
-async function generateVideoForDate(ymd, files) {
+// Internal primitive to generate a video from a prepared ordered file list to a specific output path
+async function generateVideoFromFiles(ymd, files, outPath) {
   if (!files || files.length === 0) return false;
   const hasFfmpeg = await ffmpegAvailable();
   if (!hasFfmpeg) {
@@ -139,7 +152,7 @@ async function generateVideoForDate(ymd, files) {
     return false;
   }
   ensureDir(VIDEOS_DIR);
-  const out = videoPathForDate(ymd);
+  const out = outPath;
   const args = ['-y', '-framerate', '30', '-i', path.join(tmpBase, `%06d.${chosenExt}`), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', out];
   console.log(`[video] ffmpeg ${args.join(' ')}`);
   await new Promise((resolve, reject) => {
@@ -152,6 +165,59 @@ async function generateVideoForDate(ymd, files) {
   const ok = fs.existsSync(out);
   if (ok) console.log(`[video] Created ${out}`);
   return ok;
+}
+
+async function generateVideoForDate(ymd, files) {
+  return generateVideoFromFiles(ymd, files, videoPathForDate(ymd));
+}
+
+// Daylight window helpers
+function parseHm(str) {
+  try {
+    const m = String(str || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    const h = Math.max(0, Math.min(23, parseInt(m[1], 10)));
+    const mi = Math.max(0, Math.min(59, parseInt(m[2], 10)));
+    return { h, m: mi };
+  } catch (_) { return null; }
+}
+const __daylightDtf = new Intl.DateTimeFormat('en-GB', { timeZone: DAYLIGHT_TZ, hour12: false, hour: '2-digit', minute: '2-digit' });
+const __daylightDateDtf = new Intl.DateTimeFormat('en-CA', { timeZone: DAYLIGHT_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+function hmToMinutes(h, m) { return h * 60 + m; }
+function minutesOfLocalTz(ms) {
+  try {
+    const parts = __daylightDtf.formatToParts(new Date(ms));
+    const h = parseInt(parts.find(p => p.type === 'hour').value, 10);
+    const mi = parseInt(parts.find(p => p.type === 'minute').value, 10);
+    return hmToMinutes(h, mi);
+  } catch (_) { return -1; }
+}
+function ymdOfLocalTz(ms) {
+  try {
+    const s = __daylightDateDtf.format(new Date(ms)); // YYYY-MM-DD in en-CA
+    return s;
+  } catch (_) { return null; }
+}
+function filterFilesToDaylight(ymd, files) {
+  const start = parseHm(DAYLIGHT_START_LOCAL) || { h: 6, m: 0 };
+  const end = parseHm(DAYLIGHT_END_LOCAL) || { h: 21, m: 30 };
+  const minStart = hmToMinutes(start.h, start.m);
+  const minEnd = hmToMinutes(end.h, end.m);
+  return files.filter(f => {
+    const ms = f.stat.mtimeMs;
+    const localYmd = ymdOfLocalTz(ms);
+    if (localYmd && localYmd !== ymd) return false; // ensure file's local date matches target
+    const mins = minutesOfLocalTz(ms);
+    if (mins < 0) return false;
+    return mins >= minStart && mins <= minEnd;
+  });
+}
+async function generateDaylightVideo(ymd) {
+  const imgs = listImagesForDate(ymd);
+  if (!imgs || !imgs.length) return false;
+  const daylight = filterFilesToDaylight(ymd, imgs);
+  if (!daylight.length) { console.warn(`[video] No daylight images for ${ymd}`); return false; }
+  return generateVideoFromFiles(ymd, daylight, daylightVideoPathForDate(ymd));
 }
 
 async function processUnarchivedDays() {
@@ -953,6 +1019,24 @@ app.post('/api/reprocess/:ymd', async (req, res) => {
   }
 });
 
+// API: Reprocess/regenerate daylight-only video for a specific date
+app.post('/api/reprocess-daylight/:ymd', async (req, res) => {
+  try {
+    const ymd = String(req.params.ymd || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      return res.status(400).json({ success: false, error: 'Bad date' });
+    }
+    const imgs = listImagesForDate(ymd);
+    if (!imgs.length) {
+      return res.status(404).json({ success: false, error: 'No images for date' });
+    }
+    const ok = await generateDaylightVideo(ymd);
+    return res.status(200).json({ success: !!ok });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+  }
+});
+
 // API: Re-merge all daily videos into the full-time video
 app.post('/api/reprocess-full', async (req, res) => {
   try {
@@ -962,6 +1046,68 @@ app.post('/api/reprocess-full', async (req, res) => {
     }
     const ok = await mergeDailyVideosIntoFull();
     return res.status(ok ? 200 : 500).json({ success: !!ok });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+  }
+});
+
+// Background queue to (re)generate daylight-only videos sequentially
+let daylightQueue = { running: false, startedAt: 0, current: null, remaining: [], completed: [], total: 0 };
+async function runDaylightQueue() {
+  if (!daylightQueue.running) return;
+  while (daylightQueue.running && daylightQueue.remaining.length > 0) {
+    daylightQueue.current = daylightQueue.remaining.shift();
+    try {
+      // Only (re)generate if missing
+      const ymd = daylightQueue.current;
+      const imgs = listImagesForDate(ymd);
+      if (imgs && imgs.length) {
+        if (!daylightVideoExistsForDate(ymd)) {
+          await generateDaylightVideo(ymd).catch(() => {});
+        }
+      }
+    } catch (_) { /* ignore */ }
+    daylightQueue.completed.push(daylightQueue.current);
+    daylightQueue.current = null;
+  }
+  daylightQueue.running = false;
+}
+
+// Start or enqueue daylight generation for all days (except today)
+app.post('/api/reprocess-daylight-all', async (req, res) => {
+  try {
+    const today = ymdToday();
+    const dates = getDateFolders();
+    const pending = dates.filter(d => d < today);
+    if (!pending.length) return res.status(404).json({ success: false, error: 'No days to process' });
+    if (!daylightQueue.running) {
+      daylightQueue = { running: true, startedAt: Date.now(), current: null, remaining: pending.slice(), completed: [], total: pending.length };
+      // Fire and forget
+      setTimeout(() => { runDaylightQueue().catch(()=>{}); }, 0);
+    } else {
+      // Merge new items without duplicates
+      const set = new Set(daylightQueue.remaining.concat(pending));
+      daylightQueue.remaining = Array.from(set);
+      daylightQueue.total = daylightQueue.completed.length + daylightQueue.remaining.length + (daylightQueue.current ? 1 : 0);
+    }
+    return res.status(200).json({ success: true, running: daylightQueue.running, total: daylightQueue.total });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+  }
+});
+
+// Poll daylight queue status
+app.get('/api/reprocess-daylight-status', (req, res) => {
+  try {
+    const st = daylightQueue || { running: false };
+    return res.status(200).json({
+      running: !!st.running,
+      startedAt: st.startedAt || 0,
+      current: st.current || null,
+      completed: (st.completed || []).length,
+      total: st.total || 0,
+      remaining: (st.remaining || []).length,
+    });
   } catch (e) {
     return res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
   }
@@ -1007,6 +1153,23 @@ app.get('/', (req, res) => {
     }
     const reBtn = count > 0
       ? `<button class="btn" onclick="reprocessDay('${d}', this)">Reprocess</button>`
+      : `<button class="btn" disabled>Reprocess</button>`;
+    return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}</li>`;
+  }).join('');
+  // Build daylight-only rows
+  const daylightRowsHtml = allDates.map((d) => {
+    const count = listImagesForDate(d).length;
+    const hasVid = daylightVideoExistsForDate(d);
+    let playBtn = '<button class="btn" disabled>Play</button>';
+    if (hasVid) {
+      try {
+        const st = fs.statSync(daylightVideoPathForDate(d));
+        const url = `/images/videos/${encodeURIComponent(d + '-daylight.mp4')}?v=${Math.floor(st.mtimeMs)}`;
+        playBtn = `<button class="btn" onclick="openPlayer('${url}')">Play</button>`;
+      } catch (_) { /* keep disabled */ }
+    }
+    const reBtn = count > 0
+      ? `<button class="btn" onclick="reprocessDaylight('${d}', this)">Reprocess</button>`
       : `<button class="btn" disabled>Reprocess</button>`;
     return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}</li>`;
   }).join('');
@@ -1195,6 +1358,68 @@ app.get('/', (req, res) => {
           .catch(function(){ if (status) status.textContent = 'Failed.'; })
           .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Reprocess'; }});
       }
+      // Manual reprocess helper for Daylight tab (home page)
+      function reprocessDaylight(ymd, el){
+        var status = document.getElementById('reprocess-daylight-status');
+        if (status) status.textContent = 'Reprocessing daylight ' + ymd + '…';
+        if (el) { el.disabled = true; el.dataset._label = el.textContent; el.textContent = 'Reprocessing…'; }
+        fetch('/api/reprocess-daylight/' + encodeURIComponent(ymd), { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (status) status.textContent = ok ? ('Done: ' + ymd) : ('Failed' + (data && data.error ? ': ' + data.error : ''));
+            if (ok && el) {
+              var row = el.closest('.video-row');
+              if (row) {
+                var buttons = row.querySelectorAll('button.btn');
+                for (var i = 0; i < buttons.length; i++) {
+                  if (/^Play$/i.test(buttons[i].textContent || '')) {
+                    buttons[i].disabled = false;
+                    (function(btn){ btn.onclick = function(){ openPlayer('/images/videos/' + ymd + '-daylight.mp4?v=' + Date.now()); }; })(buttons[i]);
+                    break;
+                  }
+                }
+              }
+              openPlayer('/images/videos/' + ymd + '-daylight.mp4?v=' + Date.now());
+            }
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed.'; })
+          .finally(function(){ if (el) { el.disabled = false; el.textContent = el.dataset._label || 'Reprocess'; }});
+      }
+      function reprocessDaylightAll(el){
+        var btn = el || document.getElementById('reprocess-daylight-all-btn');
+        var status = document.getElementById('reprocess-daylight-all-status');
+        if (btn) { btn.disabled = true; btn.dataset._label = btn.textContent; btn.textContent = 'Starting…'; }
+        if (status) status.textContent = 'Starting daylight queue…';
+        fetch('/api/reprocess-daylight-all', { method: 'POST' })
+          .then(function(r){ return r.json().catch(function(){ return { success:false, error:'Bad JSON' }; }); })
+          .then(function(data){
+            var ok = !!(data && data.success);
+            if (!ok && status) status.textContent = 'Nothing to do.';
+            if (ok) {
+              updateDaylightQueueStatus();
+              if (!window.__dlTimer) window.__dlTimer = setInterval(updateDaylightQueueStatus, 3000);
+            }
+          })
+          .catch(function(){ if (status) status.textContent = 'Failed to start queue.'; })
+          .finally(function(){ if (btn) { btn.disabled = false; btn.textContent = btn.dataset._label || 'Generate missing daylight videos'; }});
+      }
+      function updateDaylightQueueStatus(){
+        var status = document.getElementById('reprocess-daylight-all-status');
+        fetch('/api/reprocess-daylight-status')
+          .then(function(r){ return r.json().catch(function(){ return { running:false, completed:0, total:0, remaining:0 }; }); })
+          .then(function(s){
+            if (!status) return;
+            if (!s || !s.running) {
+              status.textContent = 'Idle' + (s && s.completed ? (' • Completed: ' + s.completed + '/' + (s.total||s.completed)) : '');
+              if (window.__dlTimer) { clearInterval(window.__dlTimer); window.__dlTimer = null; }
+              return;
+            }
+            var cur = s.current ? (' • Now: ' + s.current) : '';
+            status.textContent = 'Running • Completed ' + s.completed + ' of ' + s.total + ' • Remaining ' + s.remaining + cur;
+          })
+          .catch(function(){ if (status) status.textContent = 'Queue status unavailable'; });
+      }
     </script>
     <script>
       // Reprocess the full-time (merged) video
@@ -1261,7 +1486,7 @@ app.get('/', (req, res) => {
     <script>
       (function() {
         var KEY = 'home-active-tab';
-        var order = ['tab-live','tab-stored','tab-videos','tab-full'];
+        var order = ['tab-live','tab-stored','tab-videos','tab-daylight','tab-lightall','tab-full'];
         function select(tabId) {
           order.forEach(function(id) {
             var btn = document.getElementById(id);
@@ -1329,6 +1554,8 @@ app.get('/', (req, res) => {
       <button id="tab-live" role="tab" aria-controls="panel-live" aria-selected="true" class="tab">Live</button>
       <button id="tab-stored" role="tab" aria-controls="panel-stored" aria-selected="false" class="tab">Stored</button>
       <button id="tab-videos" role="tab" aria-controls="panel-videos" aria-selected="false" class="tab">Videos</button>
+      <button id="tab-daylight" role="tab" aria-controls="panel-daylight" aria-selected="false" class="tab">Daylight</button>
+      <button id="tab-lightall" role="tab" aria-controls="panel-lightall" aria-selected="false" class="tab">Daylight All</button>
       <button id="tab-full" role="tab" aria-controls="panel-full" aria-selected="false" class="tab">Full-time</button>
     </div>
     <div class="tabpanels">
@@ -1341,6 +1568,18 @@ app.get('/', (req, res) => {
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
         <div class="meta" id="reprocess-status"></div>
         ${videoRowsHtml ? `<ul class="video-list">${videoRowsHtml}</ul>` : '<p>No days yet.</p>'}
+      </section>
+      <section id="panel-daylight" class="tabpanel" role="tabpanel" aria-labelledby="tab-daylight" hidden aria-hidden="true">
+        <div class="actions">
+          <button class="btn" ${daylightVideoExistsForDate(ymd) ? '' : 'disabled'} onclick="${daylightVideoExistsForDate(ymd) ? `openPlayer('/images/videos/${ymd}-daylight.mp4?v=${Date.now()}')` : ''}">Play</button>
+          <button class="btn" ${imgs.length ? '' : 'disabled'} onclick="reprocessDaylight('${ymd}', this)">Reprocess daylight</button>
+          <span class="meta" id="reprocess-daylight-status"></span>
+        </div>
+        <p class="hint">Daylight window: ${DAYLIGHT_START_LOCAL}–${DAYLIGHT_END_LOCAL} (${DAYLIGHT_TZ}).</p>
+      </section>
+      <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-labelledby="tab-lightall" hidden aria-hidden="true">
+        <div class="actions"><button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button><span id="reprocess-daylight-all-status" class="meta"></span></div>
+        <p class="hint">This runs a sequential queue to avoid overloading the system.</p>
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
         ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
@@ -1501,7 +1740,7 @@ app.get('/day/:ymd', (req, res) => {
     <script>
       (function() {
         var KEY = 'home-active-tab';
-        var order = ['tab-live','tab-stored','tab-videos','tab-full'];
+        var order = ['tab-live','tab-stored','tab-videos','tab-daylight','tab-lightall','tab-full'];
         function select(tabId) {
           order.forEach(function(id) {
             var btn = document.getElementById(id);
@@ -1561,6 +1800,14 @@ app.get('/day/:ymd', (req, res) => {
       <section id="panel-videos" class="tabpanel" role="tabpanel" aria-labelledby="tab-videos" hidden aria-hidden="true">
         <div class="actions"><button id="reprocess-btn" class="btn" onclick="reprocessDay('${ymd}', this)"${imgs.length ? '' : ' disabled'}>Reprocess ${ymd} video</button><span id="reprocess-status" class="meta"></span></div>
         ${vids.length ? `<div class="videos">${videosHtml}</div>` : '<p>No videos yet. They are generated daily.</p>'}
+      </section>
+      <section id="panel-daylight" class="tabpanel" role="tabpanel" aria-labelledby="tab-daylight" hidden aria-hidden="true">
+        <div class="meta" id="reprocess-daylight-status"></div>
+        ${daylightRowsHtml ? `<ul class="video-list">${daylightRowsHtml}</ul>` : '<p>No days yet.</p>'}
+      </section>
+      <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-labelledby="tab-lightall" hidden aria-hidden="true">
+        <div class="actions"><button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button><span id="reprocess-daylight-all-status" class="meta"></span></div>
+        <p class="hint">This runs a sequential queue to avoid overloading the system.</p>
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-labelledby="tab-full" hidden aria-hidden="true">
         ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${vids.length ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${vids.length ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
