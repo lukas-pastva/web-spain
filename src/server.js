@@ -1512,35 +1512,35 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
   const videoRowsHtml = allDates.map((d) => {
     const count = listImagesForDate(d).length;
     const hasVid = videoExistsForDate(d);
-    let playBtn = '<button class="btn" disabled>Play</button>';
+    let playBtn = '<button class="btn" disabled aria-label="Play 24-hour video" data-tip="Play the 24-hour time-lapse for this date.">Play</button>';
     if (hasVid) {
       try {
         const st = fs.statSync(videoPathForDate(d));
         const url = `/images/videos/${encodeURIComponent(d + '.mp4')}?v=${Math.floor(st.mtimeMs)}`;
-        playBtn = `<button class="btn" onclick="openPlayer('${url}')">Play</button>`;
+        playBtn = `<button class="btn" aria-label="Play 24-hour video" data-tip="Play the 24-hour time-lapse for this date." onclick="openPlayer('${url}')">Play</button>`;
       } catch (_) { /* fallback keeps disabled button */ }
     }
     const reBtn = count > 0
-      ? `<button class="btn" onclick="reprocessDay('${d}', this)">Reprocess</button>`
-      : `<button class="btn" disabled>Reprocess</button>`;
-    const delBtn = `<button class="btn" onclick="deleteImagesForDay('${d}', this)"${count > 0 ? '' : ' disabled'}>Delete images</button>`;
+      ? `<button class="btn" aria-label="Reprocess 24-hour video" data-tip="Rebuild the 24-hour video from stored photos for this date. Safe to run multiple times." onclick="reprocessDay('${d}', this)">Reprocess</button>`
+      : `<button class="btn" aria-label="Reprocess 24-hour video" data-tip="Rebuild the 24-hour video from stored photos for this date." disabled>Reprocess</button>`;
+    const delBtn = `<button class="btn" aria-label="Delete images" data-tip="Delete all captured photos for this date. This is irreversible and removes the source images." onclick="deleteImagesForDay('${d}', this)"${count > 0 ? '' : ' disabled'}>Delete images</button>`;
     return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}${delBtn}</li>`;
   }).join('');
   // Build daylight-only rows
   const daylightRowsHtml = allDates.map((d) => {
     const count = listImagesForDate(d).length;
     const hasVid = daylightVideoExistsForDate(d);
-    let playBtn = '<button class="btn" disabled>Play</button>';
+    let playBtn = '<button class="btn" disabled aria-label="Play daylight-only video" data-tip="Play the daylight-only time-lapse. Night frames are removed.">Play</button>';
     if (hasVid) {
       try {
         const st = fs.statSync(daylightVideoPathForDate(d));
         const url = `/images/videos/${encodeURIComponent(d + '-daylight.mp4')}?v=${Math.floor(st.mtimeMs)}`;
-        playBtn = `<button class="btn" onclick="openPlayer('${url}')">Play</button>`;
+        playBtn = `<button class="btn" aria-label="Play daylight-only video" data-tip="Play the daylight-only time-lapse. Night frames are removed." onclick="openPlayer('${url}')">Play</button>`;
       } catch (_) { /* keep disabled */ }
     }
     const reBtn = count > 0
-      ? `<button class="btn" onclick="reprocessDaylight('${d}', this)">Reprocess</button>`
-      : `<button class="btn" disabled>Reprocess</button>`;
+      ? `<button class="btn" aria-label="Reprocess daylight-only video" data-tip="Generate or rebuild the daylight-only video using sunrise/sunset. Night frames are excluded." onclick="reprocessDaylight('${d}', this)">Reprocess</button>`
+      : `<button class="btn" aria-label="Reprocess daylight-only video" data-tip="Generate or rebuild the daylight-only video using sunrise/sunset." disabled>Reprocess</button>`;
     return `<li class="video-row"><span class="name">${d}</span><span class="meta-count">${count}</span>${playBtn}${reBtn}</li>`;
   }).join('');
   // Total number of stored images across all date folders
@@ -2028,8 +2028,8 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       </section>
       <section id="panel-lightall" class="tabpanel" role="tabpanel" aria-label="Daylight All" hidden aria-hidden="true">
         <div class="actions">
-          <button class="btn" id="reprocess-daylight-all-btn" onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button>
-          <button class="btn" id="reprocess-full-daylight-btn" onclick="reprocessFullDaylight(this)">Merge all daylight videos</button>
+          <button class="btn" id="reprocess-daylight-all-btn" aria-label="Generate missing daylight videos" data-tip="Scan all dates and create any missing daylight-only videos using existing images." onclick="reprocessDaylightAll(this)">Generate missing daylight videos</button>
+          <button class="btn" id="reprocess-full-daylight-btn" aria-label="Merge all daylight videos" data-tip="Concatenate all existing daylight-only daily videos into one long video using ffmpeg." onclick="reprocessFullDaylight(this)">Merge all daylight videos</button>
           <span id="reprocess-daylight-all-status" class="meta"></span>
         </div>
         <div id="full-daylight-container">
@@ -2038,7 +2038,7 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         <p class="hint">Missing daylight videos are generated from images; merging uses ffmpeg to concatenate existing daylight videos only.</p>
       </section>
       <section id="panel-full" class="tabpanel" role="tabpanel" aria-label="Full-time" hidden aria-hidden="true">
-        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
+        ${fullUrl ? `<div class=\"full\"><video id=\"full-video\" src=\"${fullUrl}\" controls preload=\"metadata\" playsinline></video><div class=\"player-actions\"><button class=\"btn\" onclick=\"(function(){var v=document.getElementById('full-video'); if (v && v.requestFullscreen) v.requestFullscreen();})();\">Fullscreen</button><button id=\"reprocess-full-btn\" class=\"btn\" aria-label=\"Reprocess full-time video\" data-tip=\"Regenerate the full-time video by concatenating all daily videos in order. Safe to run multiple times.\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div></div>` : `<div class=\"actions\"><button id=\"reprocess-full-btn\" class=\"btn\" aria-label=\"Reprocess full-time video\" data-tip=\"Regenerate the full-time video by concatenating all daily videos in order.\" onclick=\"reprocessFull(this)\"${hasAnyDaily ? '' : ' disabled'}>Reprocess full-time video</button><span id=\"reprocess-full-status\" class=\"meta\"></span></div><p>No full-time video yet. It updates daily around 1:00.</p>`}
       </section>
     </div>
     <div id="player-overlay" hidden>
