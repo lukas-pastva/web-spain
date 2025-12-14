@@ -1710,14 +1710,14 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         <div class="live-wrap">
           <img src="${latestUrl}" alt="Latest screenshot" />
           ${tempValA != null ? `
-          <div class="temp-badge badge-right" style="--temp-color: ${tempColorA}" title="Alicante: ${tempDisplayA}">
+          <div class="temp-badge badge-left" style="--temp-color: ${tempColorA}" title="Alicante: ${tempDisplayA}">
             <svg class="temp-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0ZM12 22a6 6 0 0 1-3-11.2V5a3 3 0 0 1 6 0v5.8A6 6 0 0 1 12 22Zm0-9a 3 3 0 0 0-1 .17V5a1 1 0 0 1 2 0v8.17A3 3 0 0 0 12 13Z"/>
             </svg>
             <span class="temp-label">Alicante ${tempDisplayA}</span>
           </div>` : ''}
           ${tempValB != null ? `
-          <div class="temp-badge badge-left" style="--temp-color: ${tempColorB}" title="Bratislava: ${tempDisplayB}">
+          <div class="temp-badge badge-right" style="--temp-color: ${tempColorB}" title="Bratislava: ${tempDisplayB}">
             <svg class="temp-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor" d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0ZM12 22a6 6 0 0 1-3-11.2V5a3 3 0 0 1 6 0v5.8A6 6 0 0 1 12 22Zm0-9a 3 3 0 0 0-1 .17V5a1 1 0 0 1 2 0v8.17A3 3 0 0 0 12 13Z"/>
             </svg>
