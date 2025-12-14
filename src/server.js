@@ -1278,29 +1278,29 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
         const count = listImagesForDate(d).length;
         const has24 = videoExistsForDate(d);
         const hasDay = daylightVideoExistsForDate(d);
-        let play24 = '<button class="btn sm" data-action="play-24" disabled title="Play 24h">▶</button>';
+        let play24 = '<button class="btn sm" data-action="play-24" disabled aria-label="Play 24-hour video" data-tip="Play the 24-hour time-lapse for this date.">▶</button>';
         if (has24) {
           try {
             const st = fs.statSync(videoPathForDate(d));
             const url = `/images/videos/${encodeURIComponent(d + '.mp4')}?v=${Math.floor(st.mtimeMs)}`;
-            play24 = `<button class=\"btn sm\" data-action=\"play-24\" title=\"Play 24h\" onclick=\"openPlayer('${url}')\">▶</button>`;
+            play24 = `<button class=\"btn sm\" data-action=\"play-24\" aria-label=\"Play 24-hour video\" data-tip=\"Play the 24-hour time-lapse for this date.\" onclick=\"openPlayer('${url}')\">▶</button>`;
           } catch (_) {}
         }
-        let playDay = '<button class="btn sm" data-action="play-day" disabled title="Play daylight">☀ ▶</button>';
+        let playDay = '<button class="btn sm" data-action="play-day" disabled aria-label="Play daylight-only video" data-tip="Play the daylight-only time-lapse. Night frames are removed.">☀ ▶</button>';
         if (hasDay) {
           try {
             const st = fs.statSync(daylightVideoPathForDate(d));
             const url = `/images/videos/${encodeURIComponent(d + '-daylight.mp4')}?v=${Math.floor(st.mtimeMs)}`;
-            playDay = `<button class=\"btn sm\" data-action=\"play-day\" title=\"Play daylight\" onclick=\"openPlayer('${url}')\">☀ ▶</button>`;
+            playDay = `<button class=\"btn sm\" data-action=\"play-day\" aria-label=\"Play daylight-only video\" data-tip=\"Play the daylight-only time-lapse. Night frames are removed.\" onclick=\"openPlayer('${url}')\">☀ ▶</button>`;
           } catch (_) {}
         }
         const re24 = count > 0
-          ? `<button class="btn sm" data-action="re-24" title="Reprocess 24h" onclick="reprocessDay('${d}', this)">♻️</button>`
-          : `<button class="btn sm" data-action="re-24" title="Reprocess 24h" disabled>♻️</button>`;
+          ? `<button class="btn sm" data-action="re-24" aria-label="Reprocess 24-hour video" data-tip="Rebuild the 24-hour video from stored photos for this date. Safe to run multiple times." onclick="reprocessDay('${d}', this)">♻️</button>`
+          : `<button class="btn sm" data-action="re-24" aria-label="Reprocess 24-hour video" data-tip="Rebuild the 24-hour video from stored photos for this date." disabled>♻️</button>`;
         const reDay = count > 0
-          ? `<button class="btn sm" data-action="re-day" title="Reprocess daylight" onclick="reprocessDaylight('${d}', this)">♻️</button>`
-          : `<button class="btn sm" data-action="re-day" title="Reprocess daylight" disabled>♻️</button>`;
-        const del = `<button class="btn sm" data-action="delete" title="Delete all photos" onclick="deleteImagesForDay('${d}', this)">🗑️</button>`;
+          ? `<button class="btn sm" data-action="re-day" aria-label="Reprocess daylight-only video" data-tip="Generate or rebuild the daylight-only video using sunrise/sunset. Night frames are excluded." onclick="reprocessDaylight('${d}', this)">♻️</button>`
+          : `<button class="btn sm" data-action="re-day" aria-label="Reprocess daylight-only video" data-tip="Generate or rebuild the daylight-only video using sunrise/sunset." disabled>♻️</button>`;
+        const del = `<button class="btn sm" data-action="delete" aria-label="Delete all photos" data-tip="Delete all captured photos for this date. This is irreversible and removes the source images." onclick="deleteImagesForDay('${d}', this)">🗑️</button>`;
         return `<li class=\"day-row\" data-ymd=\"${d}\"><span class=\"name\">${d}</span><span class=\"count\" title=\"Photos\">${count}</span><div class=\"group\">${play24}${re24}</div><div class=\"group\">${playDay}${reDay}</div><div class=\"group\">${del}</div></li>`;
       }).join('');
       const body = `<!doctype html>
@@ -1332,6 +1332,48 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       .btn:hover { filter: brightness(0.98); }
       .btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
       .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+      /* Simple tooltip bubble for any element with data-tip */
+      [data-tip] { position: relative; }
+      [data-tip]::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        transform: translateX(-50%) scale(0.98);
+        background: rgba(0,0,0,0.85);
+        color: #fff;
+        padding: 6px 8px;
+        border-radius: 6px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+        width: max-content;
+        max-width: 260px;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: pre-line;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease, transform 120ms ease;
+        z-index: 10000;
+      }
+      [data-tip]::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 2px);
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: rgba(0,0,0,0.85);
+        opacity: 0;
+        transition: opacity 120ms ease;
+        z-index: 10001;
+      }
+      [data-tip]:hover::after,
+      [data-tip]:focus-visible::after,
+      [data-tip]:hover::before,
+      [data-tip]:focus-visible::before {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+      }
       .icon-btn { appearance: none; border: 1px solid var(--button-border); background: var(--button-bg); color: var(--button-fg); border-radius: 999px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; line-height: 1; }
       .icon-btn:hover { filter: brightness(0.98); }
       .icon-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
