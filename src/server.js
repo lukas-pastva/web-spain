@@ -1319,8 +1319,9 @@ app.get('/api/reprocess-daylight-status', (req, res) => {
       .meta { color: var(--muted); font-size: 0.9em; margin: 6px 0; }
       .summary { display: grid; grid-template-columns: 1fr; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: rgba(255,255,255,0.45); }
       [data-theme=\"dark\"] .summary { background: rgba(0,0,0,0.2); }
-      .summary .line { display: flex; align-items: center; gap: 10px; }
-      .summary img { max-width: 320px; height: auto; border: 1px solid var(--border); border-radius: 6px; }
+      .summary .line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .summary .line br { flex-basis: 100%; }
+      .summary img { width: 320px; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; }
       .days { list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: 1fr; gap: 6px; }
       .day-row { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,0.5); }
       [data-theme=\"dark\"] .day-row { background: rgba(0,0,0,0.2); }
