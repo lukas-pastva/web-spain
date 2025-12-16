@@ -49,6 +49,11 @@ def get_temp_dir() -> str:
     return temp_dir
 
 
+# Viewport configuration (matching old Puppeteer version)
+VIEWPORT_WIDTH = int(os.environ.get('VIEWPORT_WIDTH', '1920'))
+VIEWPORT_HEIGHT = int(os.environ.get('VIEWPORT_HEIGHT', '1080'))
+
+
 def setup_driver() -> webdriver.Chrome:
     """Set up Chrome WebDriver with appropriate options."""
     options = Options()
@@ -56,11 +61,16 @@ def setup_driver() -> webdriver.Chrome:
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
+    # Set window size larger to ensure viewport is exactly VIEWPORT_WIDTH x VIEWPORT_HEIGHT
+    options.add_argument(f'--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}')
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-infobars')
     options.add_argument('--mute-audio')
     options.add_argument('--autoplay-policy=no-user-gesture-required')
+    # Force device scale factor for consistent rendering
+    options.add_argument('--force-device-scale-factor=1')
+    # Disable scrollbars to get clean screenshots
+    options.add_argument('--hide-scrollbars')
 
     # Use Chromium binary from environment or default path
     chrome_bin = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
@@ -77,6 +87,9 @@ def setup_driver() -> webdriver.Chrome:
 
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(60)
+
+    # Explicitly set window size to ensure exact viewport dimensions
+    driver.set_window_size(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
 
     return driver
 
@@ -585,8 +598,6 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
 
             # Switch back to main content for screenshot
             driver.switch_to.default_content()
-        else:
-            print("Warning: Could not find player iframe, taking screenshot anyway")
 
         # Wait a moment for any final rendering
         time.sleep(1)
@@ -595,8 +606,27 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
         timestamp = datetime.now().strftime('%H-%M-%S')
         temp_path = os.path.join(get_temp_dir(), f'raw_{timestamp}.png')
 
-        driver.save_screenshot(temp_path)
-        print(f"Screenshot saved to: {temp_path}")
+        # Try to screenshot just the iframe element for cleaner 16:9 video capture
+        screenshot_taken = False
+        if iframe_found:
+            try:
+                # Find the iframe element and screenshot it directly
+                iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+                for iframe in iframes:
+                    src = iframe.get_attribute('src') or ''
+                    if 'ipcamlive.com' in src:
+                        # Screenshot just the iframe element
+                        iframe.screenshot(temp_path)
+                        print(f"Screenshot of iframe saved to: {temp_path}")
+                        screenshot_taken = True
+                        break
+            except Exception as e:
+                print(f"Failed to screenshot iframe element: {e}")
+
+        if not screenshot_taken:
+            # Fallback to full page screenshot
+            driver.save_screenshot(temp_path)
+            print(f"Full page screenshot saved to: {temp_path}")
 
         return temp_path
 
