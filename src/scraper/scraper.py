@@ -72,15 +72,25 @@ def setup_driver() -> webdriver.Chrome:
 
 
 def dismiss_cookie_banner(driver: webdriver.Chrome):
-    """Dismiss the cookie notification banner if present."""
+    """Dismiss the cookie notification banner if present (matches old working version)."""
+    # Primary selector from old working version
+    try:
+        dismissed = driver.execute_script("""
+            var btn = document.querySelector('#d-notification-bar .notification-dismiss');
+            if (btn) { btn.click(); return true; }
+            return false;
+        """)
+        if dismissed:
+            print("Dismissed cookie banner via #d-notification-bar .notification-dismiss")
+            time.sleep(0.5)
+            return True
+    except:
+        pass
+
+    # Fallback selectors
     cookie_dismiss_selectors = [
         '.notification-dismiss',
         '[aria-label="Dismiss notification"]',
-        '#d-notification-bar .notification-dismiss',
-        'button[class*="cookie"]',
-        '[class*="cookie"] button',
-        '.cookie-notice button',
-        '#cookie-notice button'
     ]
 
     for selector in cookie_dismiss_selectors:
@@ -88,7 +98,7 @@ def dismiss_cookie_banner(driver: webdriver.Chrome):
             dismiss_btn = driver.find_element(By.CSS_SELECTOR, selector)
             dismiss_btn.click()
             print(f"Dismissed cookie banner with selector: {selector}")
-            time.sleep(1)
+            time.sleep(0.5)
             return True
         except:
             continue
@@ -97,141 +107,185 @@ def dismiss_cookie_banner(driver: webdriver.Chrome):
     return False
 
 
-def handle_ipcamlive_consent(driver: webdriver.Chrome):
-    """Handle consent/play buttons in ipcamlive player."""
-    # Common consent/play button selectors for ipcamlive
-    consent_selectors = [
-        '.consent-button',
-        '.accept-button',
-        'button.play',
-        '.play-button',
-        '#play-button',
-        '.vjs-big-play-button',
-        '.player-play-button',
-        '[class*="play"]',
-        'button[aria-label*="Play"]',
-        'button[title*="Play"]',
-        '.start-button',
-        '#start-button',
-        'div[class*="play"]',
-        '.overlay-play',
-        # IPCamLive specific
-        '.ipcam-play',
-        '.stream-play',
-        '#player-overlay',
-        '.player-overlay',
-    ]
-
-    for selector in consent_selectors:
-        try:
-            btn = driver.find_element(By.CSS_SELECTOR, selector)
-            if btn.is_displayed():
-                btn.click()
-                print(f"Clicked consent/play button in iframe: {selector}")
-                time.sleep(2)
-                return True
-        except:
-            continue
-
-    # Try clicking on the video/canvas element itself (some players start on click)
+def handle_player_in_iframe(driver: webdriver.Chrome):
+    """
+    Handle play button and start video in ipcamlive iframe.
+    Based on the old working version's tryClickPlayerPlay logic.
+    """
+    # First click on body to generate user gesture (as per old version)
     try:
-        video = driver.find_element(By.CSS_SELECTOR, 'video, canvas, .video-container')
-        if video.is_displayed():
-            video.click()
-            print("Clicked on video/canvas element to start playback")
-            time.sleep(2)
+        body = driver.find_element(By.TAG_NAME, 'body')
+        body.click()
+        print("Clicked body to generate user gesture")
+        time.sleep(0.3)
+    except:
+        pass
+
+    # Try JavaScript-based click with case-insensitive matching (like old Puppeteer version)
+    try:
+        clicked = driver.execute_script("""
+            // Play button selectors - case insensitive matching via JS
+            var selectors = [
+                '.vjs-big-play-button',
+                '.jw-icon-playback',
+                '.jw-icon-play',
+                '.fp-play',
+            ];
+
+            // Try direct selectors first
+            for (var i = 0; i < selectors.length; i++) {
+                var el = document.querySelector(selectors[i]);
+                if (el && el.offsetParent !== null) {
+                    el.click();
+                    return 'clicked: ' + selectors[i];
+                }
+            }
+
+            // Try aria-label/title containing play (case insensitive)
+            var buttons = document.querySelectorAll('button, [role="button"]');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                var label = (btn.getAttribute('aria-label') || '').toLowerCase();
+                var title = (btn.getAttribute('title') || '').toLowerCase();
+                var cls = (btn.className || '').toLowerCase();
+
+                if (label.includes('play') || label.includes('reproducir') ||
+                    title.includes('play') || title.includes('reproducir') ||
+                    cls.includes('play')) {
+                    if (btn.offsetParent !== null) {
+                        btn.click();
+                        return 'clicked button with play attribute';
+                    }
+                }
+            }
+
+            // Try clicking any element with play in class
+            var playEls = document.querySelectorAll('[class*="play"], [class*="Play"]');
+            for (var i = 0; i < playEls.length; i++) {
+                var el = playEls[i];
+                if (el.offsetParent !== null) {
+                    el.click();
+                    return 'clicked element with play class';
+                }
+            }
+
+            return null;
+        """)
+        if clicked:
+            print(f"Play button via JS: {clicked}")
+            time.sleep(1)
+            return True
+    except Exception as e:
+        print(f"JS play button click failed: {e}")
+
+    # As a last resort, programmatically start playback (from old version)
+    try:
+        played = driver.execute_script("""
+            var v = document.querySelector('video');
+            if (!v) return false;
+            try { v.muted = true; } catch(e) {}
+            try { v.play(); return true; } catch(e) { return false; }
+        """)
+        if played:
+            print("Started video playback programmatically")
+            time.sleep(1)
             return True
     except:
         pass
 
-    print("No consent/play button found in iframe")
+    print("No play button found or video already playing")
     return False
+
+
+def wait_for_video_playing(driver: webdriver.Chrome, timeout: int = 10) -> bool:
+    """Wait for video to be playing."""
+    end_time = time.time() + timeout
+    while time.time() < end_time:
+        try:
+            is_playing = driver.execute_script("""
+                var v = document.querySelector('video');
+                if (v && !v.paused && v.readyState >= 2) return true;
+                return false;
+            """)
+            if is_playing:
+                print("Video is playing")
+                return True
+        except:
+            pass
+        time.sleep(0.5)
+    print("Video playback check timed out")
+    return False
+
+
+def find_player_iframe(driver: webdriver.Chrome) -> bool:
+    """
+    Find and switch to the ipcamlive player iframe.
+    Based on old version: finds frame where URL includes 'ipcamlive.com'.
+    Returns True if switched successfully.
+    """
+    try:
+        iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+        print(f"Found {len(iframes)} iframes on page")
+
+        for i, iframe in enumerate(iframes):
+            src = iframe.get_attribute('src') or ''
+            print(f"  Iframe {i}: {src[:80]}...")
+
+            # Match ipcamlive.com as per old version's PLAYER_FRAME_URL_MATCH
+            if 'ipcamlive.com' in src:
+                driver.switch_to.frame(iframe)
+                print(f"Switched to ipcamlive iframe (index {i})")
+                return True
+
+        print("No ipcamlive iframe found")
+        return False
+    except Exception as e:
+        print(f"Error finding player iframe: {e}")
+        return False
 
 
 def capture_screenshot(driver: webdriver.Chrome) -> str:
     """
-    Navigate to webcam page, maximize video, and capture screenshot.
-    Returns the path to the raw screenshot.
+    Navigate to webcam page, start video playback, and capture screenshot.
+    Based on old working version's captureOnce logic.
     """
     print(f"[{datetime.now()}] Navigating to webcam page...")
     driver.get(WEBCAM_URL)
 
-    # Wait for page to load
+    # Wait for page to load (POST_NAV_WAIT_MS in old version)
     time.sleep(5)
 
     try:
-        # First dismiss cookie banner on main page
+        # Step 1: Dismiss cookie/notification banner on main page
         print("Checking for cookie banner...")
         dismiss_cookie_banner(driver)
-        time.sleep(1)
+        time.sleep(0.5)
 
-        # Find the ipcamlive iframe
-        print("Looking for ipcamlive iframe...")
-        wait = WebDriverWait(driver, 30)
-
-        iframe_selectors = [
-            'iframe[src*="ipcamlive"]',
-            'iframe[src*="g0.ipcamlive.com"]',
-            'iframe[src*="player.php"]',
-        ]
-
-        iframe_found = False
-        for selector in iframe_selectors:
-            try:
-                iframe = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                )
-                print(f"Found ipcamlive iframe with selector: {selector}")
-
-                # Switch to the iframe
-                driver.switch_to.frame(iframe)
-                print("Switched to ipcamlive iframe")
-                iframe_found = True
-                break
-            except TimeoutException:
-                continue
-
-        if not iframe_found:
-            # Fallback: try to find any iframe
-            try:
-                iframes = driver.find_elements(By.TAG_NAME, 'iframe')
-                print(f"Found {len(iframes)} iframes, trying each...")
-                for i, iframe in enumerate(iframes):
-                    src = iframe.get_attribute('src') or ''
-                    print(f"  Iframe {i}: {src[:80]}...")
-                    if 'ipcamlive' in src or 'player' in src:
-                        driver.switch_to.frame(iframe)
-                        print(f"Switched to iframe {i}")
-                        iframe_found = True
-                        break
-            except Exception as e:
-                print(f"Error finding iframes: {e}")
+        # Step 2: Find and switch to the player iframe
+        print("Looking for player iframe...")
+        iframe_found = find_player_iframe(driver)
 
         if iframe_found:
             # Wait for iframe content to load
-            time.sleep(3)
+            time.sleep(2)
 
-            # Handle consent/play button inside iframe
-            print("Checking for consent/play button in iframe...")
-            handle_ipcamlive_consent(driver)
+            # Step 3: Handle play button inside iframe
+            print("Attempting to start video playback...")
+            handle_player_in_iframe(driver)
 
-            # Wait for video to start playing
-            time.sleep(5)
+            # Step 4: Wait for video to actually be playing
+            wait_for_video_playing(driver, timeout=10)
 
-            # Try to find and wait for video element
-            try:
-                video = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, 'video, canvas'))
-                )
-                print("Video/canvas element found in iframe")
-            except:
-                print("No video element found, taking screenshot anyway")
+            # Give video a moment to render a good frame
+            time.sleep(2)
 
-        # Switch back to main content before taking screenshot
-        driver.switch_to.default_content()
+            # Switch back to main content for screenshot
+            driver.switch_to.default_content()
+        else:
+            print("Warning: Could not find player iframe, taking screenshot anyway")
 
-        # Wait a moment for any transitions
-        time.sleep(2)
+        # Wait a moment for any final rendering
+        time.sleep(1)
 
         # Take screenshot
         timestamp = datetime.now().strftime('%H-%M-%S')

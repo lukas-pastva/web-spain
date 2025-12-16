@@ -1,0 +1,20 @@
+{
+  "name": "webcam-snapshot-service",
+  "version": "1.0.0",
+  "description": "Simple web app that periodically captures screenshots of a target page and serves them; stores to /tmp/images for Kubernetes volume.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "puppeteer": "^23.7.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
+
