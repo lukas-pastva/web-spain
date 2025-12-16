@@ -71,6 +71,83 @@ def setup_driver() -> webdriver.Chrome:
     return driver
 
 
+def dismiss_cookie_banner(driver: webdriver.Chrome):
+    """Dismiss the cookie notification banner if present."""
+    cookie_dismiss_selectors = [
+        '.notification-dismiss',
+        '[aria-label="Dismiss notification"]',
+        '#d-notification-bar .notification-dismiss',
+        'button[class*="cookie"]',
+        '[class*="cookie"] button',
+        '.cookie-notice button',
+        '#cookie-notice button'
+    ]
+
+    for selector in cookie_dismiss_selectors:
+        try:
+            dismiss_btn = driver.find_element(By.CSS_SELECTOR, selector)
+            dismiss_btn.click()
+            print(f"Dismissed cookie banner with selector: {selector}")
+            time.sleep(1)
+            return True
+        except:
+            continue
+
+    print("No cookie banner found or already dismissed")
+    return False
+
+
+def handle_ipcamlive_consent(driver: webdriver.Chrome):
+    """Handle consent/play buttons in ipcamlive player."""
+    # Common consent/play button selectors for ipcamlive
+    consent_selectors = [
+        '.consent-button',
+        '.accept-button',
+        'button.play',
+        '.play-button',
+        '#play-button',
+        '.vjs-big-play-button',
+        '.player-play-button',
+        '[class*="play"]',
+        'button[aria-label*="Play"]',
+        'button[title*="Play"]',
+        '.start-button',
+        '#start-button',
+        'div[class*="play"]',
+        '.overlay-play',
+        # IPCamLive specific
+        '.ipcam-play',
+        '.stream-play',
+        '#player-overlay',
+        '.player-overlay',
+    ]
+
+    for selector in consent_selectors:
+        try:
+            btn = driver.find_element(By.CSS_SELECTOR, selector)
+            if btn.is_displayed():
+                btn.click()
+                print(f"Clicked consent/play button in iframe: {selector}")
+                time.sleep(2)
+                return True
+        except:
+            continue
+
+    # Try clicking on the video/canvas element itself (some players start on click)
+    try:
+        video = driver.find_element(By.CSS_SELECTOR, 'video, canvas, .video-container')
+        if video.is_displayed():
+            video.click()
+            print("Clicked on video/canvas element to start playback")
+            time.sleep(2)
+            return True
+    except:
+        pass
+
+    print("No consent/play button found in iframe")
+    return False
+
+
 def capture_screenshot(driver: webdriver.Chrome) -> str:
     """
     Navigate to webcam page, maximize video, and capture screenshot.
@@ -83,77 +160,78 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
     time.sleep(5)
 
     try:
-        # Wait for video element
-        print("Waiting for video element...")
+        # First dismiss cookie banner on main page
+        print("Checking for cookie banner...")
+        dismiss_cookie_banner(driver)
+        time.sleep(1)
+
+        # Find the ipcamlive iframe
+        print("Looking for ipcamlive iframe...")
         wait = WebDriverWait(driver, 30)
 
-        # Try to find video or iframe containing video
-        video_selectors = [
-            'video',
-            'iframe[src*="youtube"]',
-            'iframe[src*="vimeo"]',
-            '.video-container video',
-            '#player video',
-            '.player video'
+        iframe_selectors = [
+            'iframe[src*="ipcamlive"]',
+            'iframe[src*="g0.ipcamlive.com"]',
+            'iframe[src*="player.php"]',
         ]
 
-        video_element = None
-        for selector in video_selectors:
+        iframe_found = False
+        for selector in iframe_selectors:
             try:
-                video_element = wait.until(
+                iframe = wait.until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                 )
-                print(f"Found video element with selector: {selector}")
+                print(f"Found ipcamlive iframe with selector: {selector}")
+
+                # Switch to the iframe
+                driver.switch_to.frame(iframe)
+                print("Switched to ipcamlive iframe")
+                iframe_found = True
                 break
             except TimeoutException:
                 continue
 
-        if not video_element:
-            print("Warning: Could not find video element, taking screenshot anyway")
-
-        # Try to click play button if video is paused
-        play_selectors = [
-            '.ytp-play-button',
-            '.play-button',
-            'button[aria-label*="Play"]',
-            'button[title*="Play"]',
-            '.vp-play-button'
-        ]
-
-        for selector in play_selectors:
+        if not iframe_found:
+            # Fallback: try to find any iframe
             try:
-                play_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                play_btn.click()
-                print(f"Clicked play button: {selector}")
-                time.sleep(2)
-                break
-            except:
-                continue
+                iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+                print(f"Found {len(iframes)} iframes, trying each...")
+                for i, iframe in enumerate(iframes):
+                    src = iframe.get_attribute('src') or ''
+                    print(f"  Iframe {i}: {src[:80]}...")
+                    if 'ipcamlive' in src or 'player' in src:
+                        driver.switch_to.frame(iframe)
+                        print(f"Switched to iframe {i}")
+                        iframe_found = True
+                        break
+            except Exception as e:
+                print(f"Error finding iframes: {e}")
 
-        # Try to click fullscreen button
-        fullscreen_selectors = [
-            '.ytp-fullscreen-button',
-            'button[aria-label*="fullscreen"]',
-            'button[aria-label*="Fullscreen"]',
-            'button[title*="fullscreen"]',
-            'button[title*="Fullscreen"]',
-            '.vp-fullscreen-button',
-            '.fullscreen-button',
-            '[class*="fullscreen"]'
-        ]
+        if iframe_found:
+            # Wait for iframe content to load
+            time.sleep(3)
 
-        for selector in fullscreen_selectors:
+            # Handle consent/play button inside iframe
+            print("Checking for consent/play button in iframe...")
+            handle_ipcamlive_consent(driver)
+
+            # Wait for video to start playing
+            time.sleep(5)
+
+            # Try to find and wait for video element
             try:
-                fs_btn = driver.find_element(By.CSS_SELECTOR, selector)
-                fs_btn.click()
-                print(f"Clicked fullscreen button: {selector}")
-                time.sleep(2)
-                break
+                video = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'video, canvas'))
+                )
+                print("Video/canvas element found in iframe")
             except:
-                continue
+                print("No video element found, taking screenshot anyway")
+
+        # Switch back to main content before taking screenshot
+        driver.switch_to.default_content()
 
         # Wait a moment for any transitions
-        time.sleep(3)
+        time.sleep(2)
 
         # Take screenshot
         timestamp = datetime.now().strftime('%H-%M-%S')
@@ -166,6 +244,11 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
 
     except Exception as e:
         print(f"Error during capture: {e}")
+        # Make sure we're back to main content
+        try:
+            driver.switch_to.default_content()
+        except:
+            pass
         # Take screenshot anyway
         timestamp = datetime.now().strftime('%H-%M-%S')
         temp_path = os.path.join(get_temp_dir(), f'raw_{timestamp}.png')
