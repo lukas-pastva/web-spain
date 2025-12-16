@@ -8,6 +8,7 @@ function DailyImages() {
   const [loading, setLoading] = useState(true);
   const [loadingImages, setLoadingImages] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchDays();

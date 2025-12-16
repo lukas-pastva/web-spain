@@ -99,6 +99,61 @@ class ImageService {
 
     return daylightImages.map(img => path.join(this.imagesPath, date, img.filename));
   }
+
+  async deleteImage(date, filename) {
+    const filePath = path.join(this.imagesPath, date, filename);
+    try {
+      await fs.unlink(filePath);
+      console.log(`Deleted image: ${filePath}`);
+
+      // Check if day folder is now empty and remove it
+      const dayPath = path.join(this.imagesPath, date);
+      const remaining = await fs.readdir(dayPath);
+      const imageFiles = remaining.filter(f => /\.(jpg|jpeg|png)$/i.test(f));
+      if (imageFiles.length === 0) {
+        await fs.rmdir(dayPath);
+        console.log(`Removed empty day folder: ${dayPath}`);
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error(`Error deleting image ${filePath}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteAllImagesForDay(date) {
+    const dayPath = path.join(this.imagesPath, date);
+    try {
+      const files = await fs.readdir(dayPath);
+      const imageFiles = files.filter(f => /\.(jpg|jpeg|png)$/i.test(f));
+
+      let deleted = 0;
+      for (const file of imageFiles) {
+        try {
+          await fs.unlink(path.join(dayPath, file));
+          deleted++;
+        } catch (err) {
+          console.error(`Failed to delete ${file}:`, err);
+        }
+      }
+
+      // Check if folder is now empty and remove it
+      const remaining = await fs.readdir(dayPath);
+      if (remaining.length === 0) {
+        await fs.rmdir(dayPath);
+        console.log(`Removed empty day folder: ${dayPath}`);
+      }
+
+      console.log(`Deleted ${deleted} images for ${date}`);
+      return { success: true, deleted };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: false, error: 'Day folder not found' };
+      }
+      throw error;
+    }
+  }
 }
 
 export const imageService = new ImageService();
