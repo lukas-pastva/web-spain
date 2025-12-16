@@ -48,6 +48,56 @@ function DailyImages() {
     }
   };
 
+  const deleteImage = async (date, filename) => {
+    if (!confirm(`Delete image ${filename}?`)) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/images/day/${date}/${filename}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        // Refresh images list
+        fetchImages(date);
+        setSelectedImage(null);
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error deleting image:', err);
+      alert('Failed to delete image');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteAllImages = async (date) => {
+    if (!confirm(`Delete ALL images for ${date}? This cannot be undone!`)) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/images/day/${date}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        const result = await response.json();
+        alert(`Deleted ${result.deleted} images`);
+        // Refresh days list
+        fetchDays();
+        setImages([]);
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error deleting images:', err);
+      alert('Failed to delete images');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
