@@ -117,6 +117,101 @@ def dismiss_cookie_banner(driver: webdriver.Chrome):
     return False
 
 
+def handle_consent_dialog(driver: webdriver.Chrome, timeout: int = 8) -> bool:
+    """
+    Handle GDPR/cookie consent dialogs (FundingChoices and similar).
+    Based on old working version's tryHandleConsent logic.
+    """
+    deadline = time.time() + timeout
+    accepted = False
+
+    # FundingChoices consent selectors (from old version)
+    consent_selectors = [
+        'button.fc-cta-consent',
+        'button.fc-data-preferences-accept-all',
+        'button.fc-vendor-preferences-accept-all',
+        'button.fc-confirm-choices',
+        '.fc-consent-root button.fc-primary-button',
+    ]
+
+    # Text patterns for consent buttons (English + Spanish)
+    consent_text_patterns = [
+        'consent', 'accept', 'accept all', 'agree', 'allow', 'confirm', 'ok',
+        'aceptar', 'aceptar todo', 'consentir', 'confirmar', 'permitir', 'de acuerdo'
+    ]
+
+    while time.time() < deadline and not accepted:
+        # Try CSS selectors first
+        for selector in consent_selectors:
+            try:
+                result = driver.execute_script(f"""
+                    var el = document.querySelector('{selector}');
+                    if (el && el.offsetParent !== null) {{
+                        el.click();
+                        return true;
+                    }}
+                    return false;
+                """)
+                if result:
+                    print(f"Clicked consent button: {selector}")
+                    accepted = True
+                    break
+            except:
+                continue
+
+        # Try text-based fallback
+        if not accepted:
+            try:
+                accepted = driver.execute_script("""
+                    var patterns = arguments[0];
+                    var selectors = 'button, [role="button"], .fc-consent-root button, .fc-consent-root [role="button"]';
+                    var elements = document.querySelectorAll(selectors);
+
+                    for (var i = 0; i < elements.length; i++) {
+                        var el = elements[i];
+                        var text = (el.innerText || el.textContent || '').trim().toLowerCase();
+                        if (!text) continue;
+
+                        for (var j = 0; j < patterns.length; j++) {
+                            if (text === patterns[j] || text.startsWith(patterns[j] + ' ') || text.startsWith(patterns[j] + '\\n')) {
+                                el.click();
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                """, consent_text_patterns)
+                if accepted:
+                    print("Clicked consent button via text match")
+            except:
+                pass
+
+        # Check if consent dialog is still visible
+        if accepted:
+            time.sleep(0.2)
+            try:
+                still_visible = driver.execute_script(
+                    "return !!document.querySelector('.fc-consent-root')"
+                )
+                if not still_visible:
+                    break
+                # If still visible, we may need to click more buttons
+                accepted = False
+            except:
+                break
+
+        if not accepted:
+            time.sleep(0.25)
+
+    if accepted:
+        print("[consent] Accepted cookie/consent dialog")
+        time.sleep(0.5)
+    else:
+        print("[consent] No consent dialog found or already dismissed")
+
+    return accepted
+
+
 def handle_player_in_iframe(driver: webdriver.Chrome):
     """
     Handle play button and start video in ipcamlive iframe.
@@ -271,7 +366,12 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
         dismiss_cookie_banner(driver)
         time.sleep(0.5)
 
-        # Step 2: Find and switch to the player iframe
+        # Step 2: Handle GDPR/consent dialog (FundingChoices etc.)
+        print("Checking for consent dialog...")
+        handle_consent_dialog(driver)
+        time.sleep(0.5)
+
+        # Step 3: Find and switch to the player iframe
         print("Looking for player iframe...")
         iframe_found = find_player_iframe(driver)
 
@@ -279,11 +379,11 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
             # Wait for iframe content to load
             time.sleep(2)
 
-            # Step 3: Handle play button inside iframe
+            # Step 4: Handle play button inside iframe
             print("Attempting to start video playback...")
             handle_player_in_iframe(driver)
 
-            # Step 4: Wait for video to actually be playing
+            # Step 5: Wait for video to actually be playing
             wait_for_video_playing(driver, timeout=10)
 
             # Give video a moment to render a good frame
