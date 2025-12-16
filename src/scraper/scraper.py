@@ -62,8 +62,18 @@ def setup_driver() -> webdriver.Chrome:
     options.add_argument('--mute-audio')
     options.add_argument('--autoplay-policy=no-user-gesture-required')
 
-    # Use webdriver-manager to auto-install chromedriver
-    service = Service(ChromeDriverManager().install())
+    # Use Chromium binary from environment or default path
+    chrome_bin = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
+    if os.path.exists(chrome_bin):
+        options.binary_location = chrome_bin
+
+    # Use chromedriver from environment or default path, fallback to webdriver-manager
+    chromedriver_path = os.environ.get('CHROMEDRIVER_PATH', '/usr/bin/chromedriver')
+    if os.path.exists(chromedriver_path):
+        service = Service(chromedriver_path)
+    else:
+        # Fallback to webdriver-manager for local development
+        service = Service(ChromeDriverManager().install())
 
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(60)
