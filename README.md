@@ -1,141 +1,190 @@
-# Webcam Snapshot Service
+# Web Spain - Alicante Webcam Time-lapse
 
-A tiny Node/Express + Puppeteer service that periodically captures screenshots of a target web page and saves them into `/tmp/images` (designed to be a mounted volume in Kubernetes). The service also serves a simple web page showing the latest snapshot, daily videos, and a full-time merged video; it also exposes the image directory.
+A full-stack application that captures screenshots from the Algarapictures webcam in Alicante, Spain, overlays weather information for both Alicante and Bratislava, and presents them through a React frontend with time-lapse video generation.
 
-- Default target: `https://www.algarapictures.com/webcam`
-- Default interval: `300000` ms (5 minutes)
-- Default output dir: `/tmp/images`
-- Web port: `8080`
+## Features
 
-## Environment variables
+- **Automated Screenshot Capture**: Captures webcam every ~10 minutes (with random jitter of +/- 30 seconds)
+- **Weather Overlay**: Displays sunrise, sunset, day length, and temperature for both Alicante and Bratislava
+- **Temperature Gauges**: Visual temperature gauges in corners of each image
+- **6 Frontend Views**:
+  1. Latest Image - Most recent capture with auto-refresh
+  2. Daily Images - Browse images by date with lightbox
+  3. Daily Videos - 30fps time-lapse videos for each day
+  4. Daylight Videos - Videos containing only daylight captures
+  5. Combined 24h - All daily videos concatenated
+  6. Combined Daylight - All daylight videos concatenated
+- **Video Generation Queue**: Prevents system overload by processing one video at a time
 
-- `TARGET_URL` — Page to capture. Default: `https://www.algarapictures.com/webcam`
-- `CAPTURE_INTERVAL_MS` — Base period between captures in ms. Default: `300000` (5 minutes)
-- `JITTER_MS` — Adds ±jitter to each interval so it doesn't look like a strict cron. Default: `30000` (±30 seconds). Set to `0` to disable.
-- `OUTPUT_DIR` — Directory for images and videos. Default: `/tmp/images`
-- `PORT` — HTTP server port. Default: `8080`
-- `IMAGE_FORMAT` — `jpeg` (default) or `png`
-- `JPEG_QUALITY` — 0–100, only for `jpeg`. Default: `80`
-- `USER_DATA_DIR` — Optional Chromium profile dir to persist cookies/consent.
-- `POST_NAV_WAIT_MS` — Extra delay after navigation before capture. Default: `1500`.
-- `NAV_WAIT_UNTIL` — Navigation wait: `load`, `domcontentloaded` (default), `networkidle0`, `networkidle2`.
-- `AUTO_CONSENT` — Auto-accept common consent banners. Default: `true`.
-- `CONSENT_TIMEOUT_MS` — Consent handling timeout. Default: `8000`.
-- `VIEWPORT_WIDTH` — Browser viewport width. Default: `1920`.
-- `VIEWPORT_HEIGHT` — Browser viewport height. Default: `1080`.
-- `DEVICE_SCALE_FACTOR` — Pixel density multiplier. Default: `1`.
-- `PLAYER_FRAME_URL_MATCH` — Substring to identify the player iframe URL. Default: `ipcamlive.com`.
-- `PLAY_WAIT_MS` — Delay after clicking Play before capture, in ms. Default: `1200`.
-- `WAIT_FOR_PLAYING_TIMEOUT_MS` — Max wait for `<video>` playback, in ms. Default: `4000`.
-- `FULL_VIDEO_NAME` — Filename for merged full-time video. Default: `full.mp4`.
+## Tech Stack
 
-### Fullscreen-first capture
+- **Scraper**: Python + Selenium + PIL
+- **Backend**: Node.js + Express
+- **Frontend**: React + Vite + React Router
+- **Video Processing**: FFmpeg
+- **Weather API**: Open-Meteo (free, no API key required)
+- **Container**: Docker with Supervisor
 
-The service automatically tries to start playback and click the player's own fullscreen control inside the video iframe before capturing a screenshot. This produces a full-viewport image of the video when the player supports it. If fullscreen isn’t available, it falls back to a normal viewport screenshot.
+## Quick Start
 
-### Web UI and tabs
+### Using Docker Compose
 
-The home page shows:
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/web-spain.git
+cd web-spain
 
-- Live — latest snapshot (auto-refreshes)
-- Stored — recent snapshots not yet archived (typically today’s)
-- Videos — daily videos (30 fps) generated from each day’s snapshots
-- Full-time — a merged video concatenating the daily videos
+# Start the application
+docker-compose up -d
 
-No manual capture buttons are present; captures run on the configured schedule only.
+# View logs
+docker-compose logs -f
 
-### Persist consent/cookies (optional)
-
-Set a persistent profile directory so consent/cookies survive restarts:
-
-```
--e USER_DATA_DIR=/tmp/puppeteer
+# Access the application
+open http://localhost:3000
 ```
 
-Mount that path to a volume in Docker/Kubernetes. This avoids re-consenting on every run.
+### Environment Variables
 
-## Run locally with Docker
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | Server port |
+| `OUTPUT_DIR` | `/data` | Path to store images and videos |
+| `TARGET_URL` | `https://www.algarapictures.com/webcam` | Webcam URL to capture |
 
-Build and run (images will be written to a local folder):
+## Kubernetes Deployment
 
-```
-# From repository root
-export IMAGE=webcam-snapshot:local
-
-docker build -t "$IMAGE" src
-mkdir -p ./images
-
-docker run --rm \
-  -e TARGET_URL=https://www.algarapictures.com/webcam \
-  -e CAPTURE_INTERVAL_MS=60000 \
-  -e OUTPUT_DIR=/tmp/images \
-  -p 8080:8080 \
-  -v "$(pwd)/images:/tmp/images" \
-  "$IMAGE"
-```
-
-Open http://localhost:8080 to see the UI. The UI includes tabs for Live, Stored, Videos, and Full-time.
-
-### Browser installation (fixing "Could not find Chrome")
-
-This project uses Puppeteer v23+, which relies on a managed "Chrome for Testing" build. The base image `ghcr.io/puppeteer/puppeteer` contains all OS deps but not the browser binary by default. The included `src/Dockerfile` now pre-installs Chrome during the image build with:
-
-```
-RUN npx puppeteer browsers install chrome
-```
-
-If you’re running an older image or a local Node process and see errors like:
-
-```
-Error: Could not find Chrome (ver. 131.x)
-```
-
-fix it by installing the browser once in that environment:
-
-```
-npx puppeteer browsers install chrome
-```
-
-Alternatively, if you have a system Chrome/Chromium, you can set `PUPPETEER_EXECUTABLE_PATH` to its path and the app will use it directly.
-
-### Jittered scheduling
-
-By default the service schedules screenshots every 5 minutes with a random ±30s jitter. This avoids a rigid, clock-like cadence. You can tune it with:
-
-```
-# Every 2 minutes with ±10s jitter
--e CAPTURE_INTERVAL_MS=120000 -e JITTER_MS=10000
-
-# Disable jitter
--e JITTER_MS=0
-```
-
-## Kubernetes deployment
-
-1. Build and push the container image to your registry, then update the image reference in `k8s/deployment.yaml`:
-
-```
-# Example
-export REG=your-registry
-export IMG=$REG/webcam-snapshot:latest
-
-docker build -t "$IMG" src
-docker push "$IMG"
-# Edit k8s/deployment.yaml and set image: $IMG
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-spain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-spain
+  template:
+    metadata:
+      labels:
+        app: web-spain
+    spec:
+      containers:
+      - name: web-spain
+        image: web-spain:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: OUTPUT_DIR
+          value: /data
+        - name: TARGET_URL
+          value: https://www.algarapictures.com/webcam
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: web-spain-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-spain-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-spain
+spec:
+  selector:
+    app: web-spain
+  ports:
+  - port: 80
+    targetPort: 3000
 ```
 
-2. Apply the manifests:
+## Development
+
+### Prerequisites
+
+- Node.js 20+
+- Python 3.10+
+- Chrome/Chromium
+- FFmpeg
+
+### Local Development
+
+```bash
+# Install frontend dependencies
+cd frontend
+npm install
+
+# Install server dependencies
+cd ../server
+npm install
+
+# Install Python dependencies
+cd ../scraper
+pip install -r requirements.txt
+
+# Run frontend dev server (terminal 1)
+cd frontend
+npm run dev
+
+# Run backend server (terminal 2)
+cd server
+npm run dev
+
+# Run scraper once (terminal 3)
+cd scraper
+python scraper.py --once
+```
+
+## Storage Structure
 
 ```
-kubectl apply -f k8s/deployment.yaml
+/data/
+├── images/
+│   ├── 2025-12-16/
+│   │   ├── 08-30-45.jpg
+│   │   └── ...
+│   └── ...
+├── videos/
+│   ├── daily/
+│   │   └── 2025-12-16.mp4
+│   ├── daylight/
+│   │   └── 2025-12-16-daylight.mp4
+│   ├── combined-24h/
+│   │   └── combined-all.mp4
+│   └── combined-daylight/
+│       └── combined-daylight-all.mp4
+└── metadata/
+    └── weather_cache.json
 ```
 
-3. Access the service:
+## API Endpoints
 
-- If using the provided `NodePort` (30080): `http://<node-ip>:30080`
-- Or change the Service type to `LoadBalancer` or `ClusterIP` as needed.
+### Images
+- `GET /api/images/latest` - Latest captured image
+- `GET /api/images/days` - List of days with images
+- `GET /api/images/day/:date` - Images for a specific day
 
-## Notes
+### Videos
+- `GET /api/videos/daily` - List of daily videos
+- `GET /api/videos/daylight` - List of daylight videos
+- `GET /api/videos/combined-24h` - Combined 24h videos
+- `GET /api/videos/combined-daylight` - Combined daylight videos
+- `GET /api/videos/queue` - Video generation queue status
+- `POST /api/videos/generate/:type` - Queue video generation
+- `POST /api/videos/generate-all` - Generate all missing videos
 
-- The app writes to `/tmp/images` which should be backed by a PersistentVolume in Kubernetes. The included `PersistentVolumeClaim` (`webcam-images-pvc`) requests 1Gi of storage using the cluster default StorageClass.
-- The Dockerfile uses the official Puppeteer base image with all required OS dependencies. The image build explicitly installs Chrome for Testing via `npx puppeteer browsers install chrome`, and the app launches it in headless mode with `--no-sandbox` suitable for most Kubernetes environments.
+## License
+
+MIT

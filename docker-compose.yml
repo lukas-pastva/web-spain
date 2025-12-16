@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  web-spain:
+    build: .
+    container_name: web-spain
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${OUTPUT_DIR:-./data}:/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - OUTPUT_DIR=/data
+      - TARGET_URL=${TARGET_URL:-https://www.algarapictures.com/webcam}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
