@@ -606,22 +606,41 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
         timestamp = datetime.now().strftime('%H-%M-%S')
         temp_path = os.path.join(get_temp_dir(), f'raw_{timestamp}.png')
 
-        # Try to screenshot just the iframe element for cleaner 16:9 video capture
+        # Navigate directly to the iframe URL for full resolution capture
         screenshot_taken = False
         if iframe_found:
             try:
-                # Find the iframe element and screenshot it directly
+                # Find the iframe src URL
                 iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+                iframe_url = None
                 for iframe in iframes:
                     src = iframe.get_attribute('src') or ''
                     if 'ipcamlive.com' in src:
-                        # Screenshot just the iframe element
-                        iframe.screenshot(temp_path)
-                        print(f"Screenshot of iframe saved to: {temp_path}")
-                        screenshot_taken = True
+                        iframe_url = src
                         break
+
+                if iframe_url:
+                    print(f"Navigating directly to iframe URL for full resolution: {iframe_url}")
+                    driver.get(iframe_url)
+                    time.sleep(3)
+
+                    # Click play button again (center of screen)
+                    click_center_of_iframe(driver)
+                    time.sleep(1)
+
+                    # Try play button selectors
+                    handle_player_in_iframe(driver)
+
+                    # Wait for video
+                    wait_for_video_playing(driver, timeout=10)
+                    time.sleep(2)
+
+                    # Take full page screenshot (video fills entire viewport now)
+                    driver.save_screenshot(temp_path)
+                    print(f"Full resolution screenshot saved to: {temp_path}")
+                    screenshot_taken = True
             except Exception as e:
-                print(f"Failed to screenshot iframe element: {e}")
+                print(f"Failed to capture from iframe URL: {e}")
 
         if not screenshot_taken:
             # Fallback to full page screenshot
