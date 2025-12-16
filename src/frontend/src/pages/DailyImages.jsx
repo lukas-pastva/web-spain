@@ -131,6 +131,15 @@ function DailyImages() {
         <span className="image-count">
           {images.length} images
         </span>
+        {selectedDay && images.length > 0 && (
+          <button
+            className="btn btn-danger"
+            onClick={() => deleteAllImages(selectedDay)}
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete All'}
+          </button>
+        )}
       </div>
 
       {loadingImages ? (
@@ -176,6 +185,13 @@ function DailyImages() {
               >
                 Download
               </a>
+              <button
+                className="btn btn-danger"
+                onClick={() => deleteImage(selectedDay, selectedImage.filename)}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
             </div>
           </div>
         </div>
