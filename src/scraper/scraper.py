@@ -212,6 +212,55 @@ def handle_consent_dialog(driver: webdriver.Chrome, timeout: int = 8) -> bool:
     return accepted
 
 
+def click_center_of_iframe(driver: webdriver.Chrome):
+    """
+    Click the exact center of the current frame/viewport.
+    The big play button is typically in the center of the video player.
+    """
+    from selenium.webdriver.common.action_chains import ActionChains
+
+    try:
+        # Get viewport dimensions
+        dims = driver.execute_script("""
+            return {
+                width: window.innerWidth || document.documentElement.clientWidth,
+                height: window.innerHeight || document.documentElement.clientHeight
+            };
+        """)
+        width = dims.get('width', 1920)
+        height = dims.get('height', 1080)
+
+        center_x = width // 2
+        center_y = height // 2
+
+        # Use ActionChains to click at the center coordinates
+        actions = ActionChains(driver)
+        # Move to body first, then offset to center
+        body = driver.find_element(By.TAG_NAME, 'body')
+        actions.move_to_element_with_offset(body, center_x - body.size['width']//2, center_y - body.size['height']//2)
+        actions.click()
+        actions.perform()
+
+        print(f"Clicked center of iframe at ({center_x}, {center_y})")
+        return True
+    except Exception as e:
+        print(f"Failed to click center: {e}")
+        # Fallback: try clicking via JavaScript at center
+        try:
+            driver.execute_script("""
+                var w = window.innerWidth || document.documentElement.clientWidth;
+                var h = window.innerHeight || document.documentElement.clientHeight;
+                var el = document.elementFromPoint(w/2, h/2);
+                if (el) { el.click(); return true; }
+                return false;
+            """)
+            print("Clicked center via JS elementFromPoint")
+            return True
+        except:
+            pass
+    return False
+
+
 def handle_player_in_iframe(driver: webdriver.Chrome):
     """
     Handle play button and start video in ipcamlive iframe.
@@ -226,6 +275,11 @@ def handle_player_in_iframe(driver: webdriver.Chrome):
     except:
         pass
 
+    # Click the center of the iframe where the big play button is
+    print("Clicking center of iframe for play button...")
+    click_center_of_iframe(driver)
+    time.sleep(1)
+
     # Try JavaScript-based click with case-insensitive matching (like old Puppeteer version)
     try:
         clicked = driver.execute_script("""
@@ -235,15 +289,23 @@ def handle_player_in_iframe(driver: webdriver.Chrome):
                 '.jw-icon-playback',
                 '.jw-icon-play',
                 '.fp-play',
+                'button[aria-label*="play" i]',
+                'button[title*="play" i]',
+                'button[aria-label*="reproducir" i]',
+                'button[title*="reproducir" i]',
+                'button[class*="play" i]',
+                '[class*="big-play" i]',
             ];
 
             // Try direct selectors first
             for (var i = 0; i < selectors.length; i++) {
-                var el = document.querySelector(selectors[i]);
-                if (el && el.offsetParent !== null) {
-                    el.click();
-                    return 'clicked: ' + selectors[i];
-                }
+                try {
+                    var el = document.querySelector(selectors[i]);
+                    if (el && el.offsetParent !== null) {
+                        el.click();
+                        return 'clicked: ' + selectors[i];
+                    }
+                } catch(e) {}
             }
 
             // Try aria-label/title containing play (case insensitive)
@@ -299,6 +361,134 @@ def handle_player_in_iframe(driver: webdriver.Chrome):
         pass
 
     print("No play button found or video already playing")
+    return False
+
+
+def hover_video_bottom_right(driver: webdriver.Chrome):
+    """
+    Hover over the bottom-right of the video to reveal control bar.
+    Based on old version's hoverVideoBottomRight function.
+    """
+    from selenium.webdriver.common.action_chains import ActionChains
+
+    try:
+        # Find video or player element
+        video = driver.execute_script("""
+            var el = document.querySelector('video, .vjs-tech, .jw-video, canvas, .player, [class*="player" i]');
+            if (el) {
+                var rect = el.getBoundingClientRect();
+                return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+            }
+            return null;
+        """)
+
+        if video:
+            # Move to bottom-right corner to reveal controls
+            x = int(video['x'] + video['width'] - 10)
+            y = int(video['y'] + video['height'] - 10)
+
+            actions = ActionChains(driver)
+            actions.move_by_offset(x, y)
+            actions.perform()
+
+            print(f"Hovered at bottom-right ({x}, {y}) to reveal controls")
+            time.sleep(0.3)
+            return True
+    except Exception as e:
+        print(f"Hover failed: {e}")
+
+    # Fallback: just hover over body
+    try:
+        body = driver.find_element(By.TAG_NAME, 'body')
+        ActionChains(driver).move_to_element(body).perform()
+        time.sleep(0.2)
+    except:
+        pass
+
+    return False
+
+
+def handle_fullscreen_in_iframe(driver: webdriver.Chrome):
+    """
+    Click fullscreen/maximize button inside the player iframe.
+    Based on old version's tryClickPlayerFullscreen logic.
+    """
+    # Hover to reveal controls first
+    hover_video_bottom_right(driver)
+
+    # Fullscreen button selectors from old version
+    fullscreen_selectors = [
+        'button[aria-label*="Full" i]',
+        'button[title*="Full" i]',
+        'button[aria-label*="pantalla" i]',
+        'button[title*="pantalla" i]',
+        '.vjs-fullscreen-control',
+        '.jw-icon-fullscreen',
+        'button[class*="full" i]',
+        '[class*="fullscreen" i]',
+        'a[title*="full" i]',
+    ]
+
+    try:
+        clicked = driver.execute_script("""
+            var selectors = arguments[0];
+
+            for (var i = 0; i < selectors.length; i++) {
+                try {
+                    var el = document.querySelector(selectors[i]);
+                    if (el && el.offsetParent !== null) {
+                        el.click();
+                        return 'clicked: ' + selectors[i];
+                    }
+                } catch(e) {}
+            }
+
+            // Try any button/element with fullscreen in aria-label or title
+            var buttons = document.querySelectorAll('button, [role="button"], a');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                var label = (btn.getAttribute('aria-label') || '').toLowerCase();
+                var title = (btn.getAttribute('title') || '').toLowerCase();
+                var cls = (btn.className || '').toLowerCase();
+
+                if (label.includes('full') || label.includes('pantalla') ||
+                    title.includes('full') || title.includes('pantalla') ||
+                    cls.includes('fullscreen')) {
+                    if (btn.offsetParent !== null) {
+                        btn.click();
+                        return 'clicked fullscreen button';
+                    }
+                }
+            }
+
+            return null;
+        """, fullscreen_selectors)
+
+        if clicked:
+            print(f"Fullscreen button: {clicked}")
+            time.sleep(0.5)
+            return True
+    except Exception as e:
+        print(f"Fullscreen click failed: {e}")
+
+    # Try programmatic fullscreen as last resort
+    try:
+        result = driver.execute_script("""
+            var el = document.querySelector('video, canvas, .player, #player, [class*="player"]');
+            var target = el || document.documentElement;
+            if (target && target.requestFullscreen) {
+                try { target.requestFullscreen(); return true; } catch(e) {}
+            }
+            return false;
+        """)
+        if result:
+            print("Entered fullscreen programmatically")
+            time.sleep(0.5)
+            return True
+    except:
+        pass
+
+    print("No fullscreen button found")
     return False
 
 
@@ -379,14 +569,18 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
             # Wait for iframe content to load
             time.sleep(2)
 
-            # Step 4: Handle play button inside iframe
+            # Step 4: Handle play button inside iframe (click center first)
             print("Attempting to start video playback...")
             handle_player_in_iframe(driver)
 
             # Step 5: Wait for video to actually be playing
             wait_for_video_playing(driver, timeout=10)
 
-            # Give video a moment to render a good frame
+            # Step 6: Click fullscreen/maximize button
+            print("Attempting to enter fullscreen...")
+            handle_fullscreen_in_iframe(driver)
+
+            # Give video a moment to render in fullscreen
             time.sleep(2)
 
             # Switch back to main content for screenshot
