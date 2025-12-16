@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   web-spain:
-    build: .
+    build:
+      context: ./src
+      dockerfile: Dockerfile
     container_name: web-spain
     restart: unless-stopped
     ports:

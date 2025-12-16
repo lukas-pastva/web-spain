@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y \
     libpangocairo-1.0-0 \
     libgtk-3-0 \
     supervisor \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Chrome environment variables for Selenium
