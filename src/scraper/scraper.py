@@ -599,74 +599,101 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
             # Switch back to main content for screenshot
             driver.switch_to.default_content()
 
-        # Get the iframe URL and navigate directly to it for full resolution
+        # Get iframe URL for full resolution capture
+        iframe_url = None
+        try:
+            iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+            for iframe in iframes:
+                src = iframe.get_attribute('src') or ''
+                if 'ipcamlive.com' in src:
+                    iframe_url = src
+                    print(f"Found iframe URL: {iframe_url}")
+                    break
+        except Exception as e:
+            print(f"Failed to get iframe URL: {e}")
+
+        # Take screenshot
         timestamp = datetime.now().strftime('%H-%M-%S')
         temp_path = os.path.join(get_temp_dir(), f'raw_{timestamp}.png')
 
-        iframe_url = None
-        if iframe_found:
+        if iframe_url:
+            # Navigate directly to player URL for full 1920x1080 capture
+            print("Navigating to player URL for full resolution...")
+            driver.get(iframe_url)
+
+            # Wait longer for player to fully load
+            print("Waiting for player to load...")
+            time.sleep(8)
+
+            # Handle any consent on the player page
+            handle_consent_dialog(driver, timeout=3)
+            time.sleep(1)
+
+            # Generate user gesture by clicking body
             try:
-                # Find the iframe URL while we're on the main page
+                body = driver.find_element(By.TAG_NAME, 'body')
+                body.click()
+                print("Clicked body for user gesture")
+                time.sleep(0.5)
+            except:
+                pass
+
+            # Click center of screen for big play button
+            print("Clicking center for play button...")
+            click_center_of_iframe(driver)
+            time.sleep(3)
+
+            # Try play button selectors
+            handle_player_in_iframe(driver)
+            time.sleep(2)
+
+            # Wait for video to play
+            print("Waiting for video...")
+            for attempt in range(3):
+                if wait_for_video_playing(driver, timeout=10):
+                    print("Video is playing!")
+                    break
+                print(f"Retry {attempt + 1}: clicking play again...")
+                click_center_of_iframe(driver)
+                time.sleep(2)
+
+            # Final wait for video frame
+            time.sleep(3)
+
+            # Check what we have
+            page_info = driver.execute_script("""
+                var v = document.querySelector('video');
+                var body = document.body;
+                return {
+                    hasVideo: !!v,
+                    videoPlaying: v ? !v.paused : false,
+                    videoWidth: v ? v.videoWidth : 0,
+                    videoHeight: v ? v.videoHeight : 0,
+                    bodyWidth: body ? body.clientWidth : 0,
+                    bodyHeight: body ? body.clientHeight : 0,
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight
+                };
+            """)
+            print(f"Page info: {page_info}")
+
+            # Take screenshot
+            driver.save_screenshot(temp_path)
+            print(f"Screenshot saved: {temp_path}")
+        else:
+            # Fallback: screenshot iframe element on main page
+            print("No iframe URL, taking iframe element screenshot...")
+            try:
                 iframes = driver.find_elements(By.TAG_NAME, 'iframe')
                 for iframe in iframes:
                     src = iframe.get_attribute('src') or ''
                     if 'ipcamlive.com' in src:
-                        iframe_url = src
-                        print(f"Found iframe URL: {iframe_url}")
+                        iframe.screenshot(temp_path)
+                        print(f"Iframe screenshot saved: {temp_path}")
                         break
-            except Exception as e:
-                print(f"Failed to get iframe URL: {e}")
-
-        if iframe_url:
-            # Navigate directly to iframe URL for full resolution capture
-            # The player will render at full viewport size (1920x1080)
-            print(f"Navigating to player URL for full resolution...")
-            driver.get(iframe_url)
-
-            # Wait for player page to load
-            time.sleep(5)
-
-            # Click center to start playback (big play button is in center)
-            print("Clicking play button...")
-            click_center_of_iframe(driver)
-            time.sleep(2)
-
-            # Also try play button selectors
-            handle_player_in_iframe(driver)
-
-            # Wait for video to start playing
-            print("Waiting for video to play...")
-            video_playing = wait_for_video_playing(driver, timeout=15)
-
-            if video_playing:
-                # Wait for a good frame to render
-                time.sleep(2)
-
-                # Verify video dimensions
-                video_info = driver.execute_script("""
-                    var v = document.querySelector('video');
-                    if (v) {
-                        return {
-                            videoWidth: v.videoWidth,
-                            videoHeight: v.videoHeight,
-                            clientWidth: v.clientWidth,
-                            clientHeight: v.clientHeight,
-                            readyState: v.readyState
-                        };
-                    }
-                    return null;
-                """)
-                if video_info:
-                    print(f"Video info: {video_info['videoWidth']}x{video_info['videoHeight']} "
-                          f"(displayed: {video_info['clientWidth']}x{video_info['clientHeight']})")
-
-            # Take full page screenshot at viewport resolution
-            driver.save_screenshot(temp_path)
-            print(f"Screenshot saved: {temp_path}")
-        else:
-            # Fallback: take screenshot of main page
-            print("No iframe URL found, taking screenshot of main page")
-            driver.save_screenshot(temp_path)
+            except:
+                driver.save_screenshot(temp_path)
+                print(f"Full page screenshot saved: {temp_path}")
 
         return temp_path
 
