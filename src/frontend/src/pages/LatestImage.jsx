@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import './LatestImage.css';
 
+const CAPTURE_INTERVAL = 600; // 10 minutes in seconds
+const CAPTURE_JITTER = 30; // ±30 seconds random jitter
+
 function LatestImage() {
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [countdown, setCountdown] = useState(null);
 
   const fetchLatest = async () => {
     try {
@@ -38,6 +42,61 @@ function LatestImage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Countdown timer
+  useEffect(() => {
+    if (!image) return;
+
+    const calculateCountdown = () => {
+      // Parse image time (format: HH:MM:SS)
+      const [hours, minutes, seconds] = image.time.split(':').map(Number);
+
+      // Create date object for the image capture time
+      const imageDate = new Date();
+      const [year, month, day] = image.date.split('-').map(Number);
+      imageDate.setFullYear(year, month - 1, day);
+      imageDate.setHours(hours, minutes, seconds, 0);
+
+      // Calculate next capture time range (10 minutes ± 30 seconds)
+      const now = new Date();
+      const elapsed = (now.getTime() - imageDate.getTime()) / 1000;
+
+      const minRemaining = Math.max(0, (CAPTURE_INTERVAL - CAPTURE_JITTER) - elapsed);
+      const maxRemaining = Math.max(0, (CAPTURE_INTERVAL + CAPTURE_JITTER) - elapsed);
+
+      return { min: Math.floor(minRemaining), max: Math.floor(maxRemaining) };
+    };
+
+    const updateCountdown = () => {
+      const remaining = calculateCountdown();
+      setCountdown(remaining);
+
+      // Auto-refresh when max countdown reaches 0
+      if (remaining.max === 0) {
+        setTimeout(fetchLatest, 5000); // Wait 5 seconds then refresh
+      }
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [image]);
+
+  const formatCountdown = (countdown) => {
+    if (countdown === null) return '--:--';
+    const { min, max } = countdown;
+
+    if (max === 0) return 'Any moment now...';
+    if (min === 0) return 'Any moment now...';
+
+    const formatTime = (secs) => {
+      const mins = Math.floor(secs / 60);
+      const s = secs % 60;
+      return `${mins}:${s.toString().padStart(2, '0')}`;
+    };
+
+    return `${formatTime(min)} - ${formatTime(max)}`;
+  };
+
   if (loading) {
     return <div className="loading">Loading latest image...</div>;
   }
@@ -62,11 +121,9 @@ function LatestImage() {
         <div className="meta-info">
           <span className="date-badge">{image.date}</span>
           <span className="time-badge">{image.time}</span>
-          {lastUpdate && (
-            <span className="update-info">
-              Last checked: {lastUpdate.toLocaleTimeString()}
-            </span>
-          )}
+          <span className="countdown-badge">
+            Next: {formatCountdown(countdown)}
+          </span>
         </div>
       </div>
 
