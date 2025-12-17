@@ -132,22 +132,21 @@ function CombinedDaylightVideos() {
                   <source src={video.url} type="video/mp4" />
                   Your browser does not support the video tag.
                 </video>
+                <button
+                  className="video-delete-btn"
+                  onClick={() => deleteVideo(video.filename)}
+                  disabled={deleting}
+                  title="Delete video"
+                >
+                  🗑️
+                </button>
               </div>
               <div className="video-info">
                 <h3>All Daylight Combined</h3>
                 <span className="video-size">{formatFileSize(video.size)}</span>
-              </div>
-              <div className="video-actions">
-                <a href={video.url} download className="btn btn-secondary">
+                <a href={video.url} download className="btn btn-small">
                   Download
                 </a>
-                <button
-                  className="btn btn-danger"
-                  onClick={() => deleteVideo(video.filename)}
-                  disabled={deleting}
-                >
-                  Delete
-                </button>
               </div>
             </div>
           ))}
