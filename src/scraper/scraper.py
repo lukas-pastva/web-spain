@@ -599,68 +599,74 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
             # Switch back to main content for screenshot
             driver.switch_to.default_content()
 
-        # Wait a moment for any final rendering
-        time.sleep(1)
-
-        # Take screenshot
+        # Get the iframe URL and navigate directly to it for full resolution
         timestamp = datetime.now().strftime('%H-%M-%S')
         temp_path = os.path.join(get_temp_dir(), f'raw_{timestamp}.png')
 
-        # Maximize iframe to fill viewport and take screenshot
-        screenshot_taken = False
+        iframe_url = None
         if iframe_found:
             try:
-                # Use JavaScript to make iframe fill the entire viewport
-                driver.execute_script("""
-                    // Hide everything except the iframe
-                    document.body.style.margin = '0';
-                    document.body.style.padding = '0';
-                    document.body.style.overflow = 'hidden';
-
-                    // Hide all elements
-                    var allElements = document.body.children;
-                    for (var i = 0; i < allElements.length; i++) {
-                        allElements[i].style.display = 'none';
-                    }
-
-                    // Find and maximize the ipcamlive iframe
-                    var iframes = document.querySelectorAll('iframe');
-                    for (var i = 0; i < iframes.length; i++) {
-                        var src = iframes[i].src || '';
-                        if (src.includes('ipcamlive.com')) {
-                            iframes[i].style.display = 'block';
-                            iframes[i].style.position = 'fixed';
-                            iframes[i].style.top = '0';
-                            iframes[i].style.left = '0';
-                            iframes[i].style.width = '100vw';
-                            iframes[i].style.height = '100vh';
-                            iframes[i].style.border = 'none';
-                            iframes[i].style.zIndex = '999999';
-
-                            // Also show parent elements
-                            var parent = iframes[i].parentElement;
-                            while (parent && parent !== document.body) {
-                                parent.style.display = 'block';
-                                parent = parent.parentElement;
-                            }
-                            break;
-                        }
-                    }
-                """)
-                print("Maximized iframe to fill viewport")
-                time.sleep(1)
-
-                # Take full page screenshot (now shows only the maximized iframe)
-                driver.save_screenshot(temp_path)
-                print(f"Full resolution screenshot saved to: {temp_path}")
-                screenshot_taken = True
+                # Find the iframe URL while we're on the main page
+                iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+                for iframe in iframes:
+                    src = iframe.get_attribute('src') or ''
+                    if 'ipcamlive.com' in src:
+                        iframe_url = src
+                        print(f"Found iframe URL: {iframe_url}")
+                        break
             except Exception as e:
-                print(f"Failed to maximize iframe: {e}")
+                print(f"Failed to get iframe URL: {e}")
 
-        if not screenshot_taken:
-            # Fallback to full page screenshot
+        if iframe_url:
+            # Navigate directly to iframe URL for full resolution capture
+            # The player will render at full viewport size (1920x1080)
+            print(f"Navigating to player URL for full resolution...")
+            driver.get(iframe_url)
+
+            # Wait for player page to load
+            time.sleep(5)
+
+            # Click center to start playback (big play button is in center)
+            print("Clicking play button...")
+            click_center_of_iframe(driver)
+            time.sleep(2)
+
+            # Also try play button selectors
+            handle_player_in_iframe(driver)
+
+            # Wait for video to start playing
+            print("Waiting for video to play...")
+            video_playing = wait_for_video_playing(driver, timeout=15)
+
+            if video_playing:
+                # Wait for a good frame to render
+                time.sleep(2)
+
+                # Verify video dimensions
+                video_info = driver.execute_script("""
+                    var v = document.querySelector('video');
+                    if (v) {
+                        return {
+                            videoWidth: v.videoWidth,
+                            videoHeight: v.videoHeight,
+                            clientWidth: v.clientWidth,
+                            clientHeight: v.clientHeight,
+                            readyState: v.readyState
+                        };
+                    }
+                    return null;
+                """)
+                if video_info:
+                    print(f"Video info: {video_info['videoWidth']}x{video_info['videoHeight']} "
+                          f"(displayed: {video_info['clientWidth']}x{video_info['clientHeight']})")
+
+            # Take full page screenshot at viewport resolution
             driver.save_screenshot(temp_path)
-            print(f"Full page screenshot saved to: {temp_path}")
+            print(f"Screenshot saved: {temp_path}")
+        else:
+            # Fallback: take screenshot of main page
+            print("No iframe URL found, taking screenshot of main page")
+            driver.save_screenshot(temp_path)
 
         return temp_path
 

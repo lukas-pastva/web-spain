@@ -159,6 +159,16 @@ function DailyImages() {
                 alt={`Capture at ${img.time}`}
                 loading="lazy"
               />
+              <button
+                className="image-delete-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteImage(selectedDay, img.filename);
+                }}
+                title="Delete image"
+              >
+                🗑️
+              </button>
               <div className="image-time">{img.time}</div>
             </div>
           ))}
