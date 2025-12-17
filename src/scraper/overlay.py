@@ -236,6 +236,28 @@ def add_overlay(
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
+        # Resize to 800x450 (16:9) if needed
+        target_width, target_height = 800, 450
+        if image.size != (target_width, target_height):
+            # Crop to 16:9 aspect ratio first (from center)
+            img_width, img_height = image.size
+            target_ratio = target_width / target_height
+            img_ratio = img_width / img_height
+
+            if img_ratio > target_ratio:
+                # Image is wider, crop width
+                new_width = int(img_height * target_ratio)
+                left = (img_width - new_width) // 2
+                image = image.crop((left, 0, left + new_width, img_height))
+            elif img_ratio < target_ratio:
+                # Image is taller, crop height
+                new_height = int(img_width / target_ratio)
+                top = (img_height - new_height) // 2
+                image = image.crop((0, top, img_width, top + new_height))
+
+            # Resize to exact dimensions
+            image = image.resize((target_width, target_height), Image.LANCZOS)
+
         draw = ImageDraw.Draw(image)
         width, height = image.size
 
