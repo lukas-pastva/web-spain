@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './DailyImages.css';
 
 function DailyImages() {
@@ -8,7 +8,9 @@ function DailyImages() {
   const [loading, setLoading] = useState(true);
   const [loadingImages, setLoadingImages] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const touchStartX = useRef(null);
 
   useEffect(() => {
     fetchDays();
@@ -20,16 +22,60 @@ function DailyImages() {
     }
   }, [selectedDay]);
 
+  const navigateImage = (direction) => {
+    if (!images.length) return;
+    let newIndex = selectedIndex + direction;
+    if (newIndex < 0) newIndex = images.length - 1;
+    if (newIndex >= images.length) newIndex = 0;
+    setSelectedIndex(newIndex);
+    setSelectedImage(images[newIndex]);
+  };
+
+  const openImage = (img, index) => {
+    setSelectedImage(img);
+    setSelectedIndex(index);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && selectedImage) {
-        setSelectedImage(null);
+      if (!selectedImage) return;
+
+      switch (e.key) {
+        case 'Escape':
+          setSelectedImage(null);
+          break;
+        case 'ArrowLeft':
+          navigateImage(-1);
+          break;
+        case 'ArrowRight':
+          navigateImage(1);
+          break;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedImage]);
+  }, [selectedImage, selectedIndex, images]);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchStartX.current - touchEndX;
+
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) {
+        navigateImage(1); // Swipe left = next
+      } else {
+        navigateImage(-1); // Swipe right = previous
+      }
+    }
+    touchStartX.current = null;
+  };
 
   const fetchDays = async () => {
     try {
@@ -159,11 +205,11 @@ function DailyImages() {
         <div className="empty-state">No images for this day.</div>
       ) : (
         <div className="image-grid">
-          {images.map((img) => (
+          {images.map((img, index) => (
             <div
               key={img.filename}
               className="image-card"
-              onClick={() => setSelectedImage(img)}
+              onClick={() => openImage(img, index)}
             >
               <img
                 src={img.url}
@@ -187,7 +233,24 @@ function DailyImages() {
       )}
 
       {selectedImage && (
-        <div className="lightbox" onClick={() => setSelectedImage(null)}>
+        <div
+          className="lightbox"
+          onClick={() => setSelectedImage(null)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <button
+            className="lightbox-nav lightbox-prev"
+            onClick={(e) => { e.stopPropagation(); navigateImage(-1); }}
+          >
+            ‹
+          </button>
+          <button
+            className="lightbox-nav lightbox-next"
+            onClick={(e) => { e.stopPropagation(); navigateImage(1); }}
+          >
+            ›
+          </button>
           <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
             <button
               className="lightbox-close"
@@ -197,6 +260,7 @@ function DailyImages() {
             </button>
             <img src={selectedImage.url} alt={`Capture at ${selectedImage.time}`} />
             <div className="lightbox-info">
+              <span className="lightbox-counter">{selectedIndex + 1} / {images.length}</span>
               <span>{selectedDay}</span>
               <span>{selectedImage.time}</span>
               <a
