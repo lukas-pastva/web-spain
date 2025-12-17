@@ -20,6 +20,17 @@ function DailyImages() {
     }
   }, [selectedDay]);
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && selectedImage) {
+        setSelectedImage(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedImage]);
+
   const fetchDays = async () => {
     try {
       const response = await fetch('/api/images/days');

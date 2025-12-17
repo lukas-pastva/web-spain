@@ -49,9 +49,9 @@ def get_temp_dir() -> str:
     return temp_dir
 
 
-# Viewport configuration (matching old Puppeteer version)
-VIEWPORT_WIDTH = int(os.environ.get('VIEWPORT_WIDTH', '1920'))
-VIEWPORT_HEIGHT = int(os.environ.get('VIEWPORT_HEIGHT', '1080'))
+# Viewport configuration (16:9 aspect ratio)
+VIEWPORT_WIDTH = int(os.environ.get('VIEWPORT_WIDTH', '800'))
+VIEWPORT_HEIGHT = int(os.environ.get('VIEWPORT_HEIGHT', '450'))
 
 
 def setup_driver() -> webdriver.Chrome:

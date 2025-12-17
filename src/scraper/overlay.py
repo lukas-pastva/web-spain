@@ -306,8 +306,8 @@ if __name__ == '__main__':
         'day_length': '10h 15m'
     }
 
-    # Create a test image
-    test_image = Image.new('RGB', (1920, 1080), color='skyblue')
+    # Create a test image (16:9 aspect ratio)
+    test_image = Image.new('RGB', (800, 450), color='skyblue')
     test_image.save('/tmp/test_input.jpg')
 
     add_overlay(
