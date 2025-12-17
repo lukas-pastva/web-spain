@@ -93,4 +93,43 @@ router.post('/generate-all', async (req, res) => {
   }
 });
 
+// Delete a single video
+router.delete('/:type/:filename', async (req, res) => {
+  try {
+    const { type, filename } = req.params;
+    const validTypes = ['daily', 'daylight', 'combined-24h', 'combined-daylight'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({ error: 'Invalid video type' });
+    }
+    // Validate filename (prevent path traversal)
+    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+    const result = await videoService.deleteVideo(type, filename);
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting video:', error);
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete all videos of a type
+router.delete('/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    const validTypes = ['daily', 'daylight', 'combined-24h', 'combined-daylight'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({ error: 'Invalid video type' });
+    }
+    const result = await videoService.deleteAllVideos(type);
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting videos:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

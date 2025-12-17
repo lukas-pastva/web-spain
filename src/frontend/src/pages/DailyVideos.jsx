@@ -6,6 +6,7 @@ function DailyVideos() {
   const [loading, setLoading] = useState(true);
   const [queueStatus, setQueueStatus] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchVideos();
@@ -56,6 +57,52 @@ function DailyVideos() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const deleteVideo = async (filename) => {
+    if (!confirm(`Delete video ${filename}?`)) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/videos/daily/${filename}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        fetchVideos();
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error deleting video:', err);
+      alert('Failed to delete video');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteAllVideos = async () => {
+    if (!confirm('Delete ALL daily videos? This cannot be undone!')) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch('/api/videos/daily', {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        const result = await response.json();
+        alert(`Deleted ${result.deleted} videos`);
+        fetchVideos();
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error deleting videos:', err);
+      alert('Failed to delete videos');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading videos...</div>;
   }
@@ -77,6 +124,15 @@ function DailyVideos() {
           >
             {generating ? 'Queueing...' : 'Generate Missing Videos'}
           </button>
+          {videos.length > 0 && (
+            <button
+              className="btn btn-danger"
+              onClick={deleteAllVideos}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete All'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -106,6 +162,13 @@ function DailyVideos() {
                 <a href={video.url} download className="btn btn-secondary">
                   Download
                 </a>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => deleteVideo(video.filename)}
+                  disabled={deleting}
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}

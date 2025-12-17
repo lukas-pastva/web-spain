@@ -5,6 +5,7 @@ function DaylightVideos() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [queueStatus, setQueueStatus] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchVideos();
@@ -43,6 +44,52 @@ function DaylightVideos() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const deleteVideo = async (filename) => {
+    if (!confirm(`Delete video ${filename}?`)) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/videos/daylight/${filename}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        fetchVideos();
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error deleting video:', err);
+      alert('Failed to delete video');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteAllVideos = async () => {
+    if (!confirm('Delete ALL daylight videos? This cannot be undone!')) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch('/api/videos/daylight', {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        const result = await response.json();
+        alert(`Deleted ${result.deleted} videos`);
+        fetchVideos();
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error deleting videos:', err);
+      alert('Failed to delete videos');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading videos...</div>;
   }
@@ -51,11 +98,22 @@ function DaylightVideos() {
     <div className="video-list-page">
       <div className="page-header">
         <h1 className="page-title">Daylight Time-lapse Videos</h1>
-        {queueStatus?.isProcessing && (
-          <span className="queue-status">
-            Processing: {queueStatus.currentJob?.type}
-          </span>
-        )}
+        <div className="header-actions">
+          {queueStatus?.isProcessing && (
+            <span className="queue-status">
+              Processing: {queueStatus.currentJob?.type}
+            </span>
+          )}
+          {videos.length > 0 && (
+            <button
+              className="btn btn-danger"
+              onClick={deleteAllVideos}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete All'}
+            </button>
+          )}
+        </div>
       </div>
 
       <p className="page-description">
@@ -85,6 +143,13 @@ function DaylightVideos() {
                 <a href={video.url} download className="btn btn-secondary">
                   Download
                 </a>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => deleteVideo(video.filename)}
+                  disabled={deleting}
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}

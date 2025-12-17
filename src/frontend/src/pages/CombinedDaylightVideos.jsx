@@ -6,6 +6,7 @@ function CombinedDaylightVideos() {
   const [loading, setLoading] = useState(true);
   const [queueStatus, setQueueStatus] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchVideos();
@@ -64,6 +65,28 @@ function CombinedDaylightVideos() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
+  const deleteVideo = async (filename) => {
+    if (!confirm(`Delete video ${filename}?`)) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/videos/combined-daylight/${filename}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        fetchVideos();
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (err) {
+      console.error('Error deleting video:', err);
+      alert('Failed to delete video');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading videos...</div>;
   }
@@ -118,6 +141,13 @@ function CombinedDaylightVideos() {
                 <a href={video.url} download className="btn btn-secondary">
                   Download
                 </a>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => deleteVideo(video.filename)}
+                  disabled={deleting}
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}

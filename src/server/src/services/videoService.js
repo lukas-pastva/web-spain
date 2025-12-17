@@ -215,6 +215,44 @@ class VideoService {
 
     return { queued, message: `Queued ${queued.length} video generation jobs` };
   }
+
+  async deleteVideo(type, filename) {
+    const filePath = path.join(this.videosPath, type, filename);
+    try {
+      await fs.unlink(filePath);
+      console.log(`Deleted video: ${filePath}`);
+      return { success: true };
+    } catch (error) {
+      console.error(`Error deleting video ${filePath}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteAllVideos(type) {
+    const typePath = path.join(this.videosPath, type);
+    try {
+      const files = await fs.readdir(typePath);
+      const videoFiles = files.filter(f => /\.mp4$/i.test(f));
+
+      let deleted = 0;
+      for (const file of videoFiles) {
+        try {
+          await fs.unlink(path.join(typePath, file));
+          deleted++;
+        } catch (err) {
+          console.error(`Failed to delete ${file}:`, err);
+        }
+      }
+
+      console.log(`Deleted ${deleted} videos from ${type}`);
+      return { success: true, deleted };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: false, error: 'Video folder not found' };
+      }
+      throw error;
+    }
+  }
 }
 
 export const videoService = new VideoService();
