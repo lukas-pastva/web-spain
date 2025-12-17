@@ -4,6 +4,8 @@ import path from 'path';
 import os from 'os';
 
 const FRAME_RATE = 30;
+// Duration per image in seconds (1/FRAME_RATE for smooth video)
+const IMAGE_DURATION = 1 / FRAME_RATE;
 
 /**
  * Execute an FFmpeg command
@@ -24,7 +26,8 @@ function runFFmpeg(args) {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
+        console.error(`FFmpeg stderr: ${stderr}`);
+        reject(new Error(`FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
       }
     });
 
@@ -42,17 +45,26 @@ export async function generateDailyVideo(imagePaths, outputPath) {
     throw new Error('No images provided');
   }
 
+  console.log(`Generating video from ${imagePaths.length} images...`);
+
   // Create temporary file list for FFmpeg concat
   const tempDir = os.tmpdir();
   const listPath = path.join(tempDir, `ffmpeg-list-${Date.now()}.txt`);
 
   try {
-    // Create file list
+    // Create file list with duration for each image
+    // The concat demuxer needs duration directive for images
     const fileList = imagePaths
-      .map(p => `file '${p.replace(/'/g, "'\\''")}'`)
+      .map(p => `file '${p.replace(/'/g, "'\\''")}'
+duration ${IMAGE_DURATION}`)
       .join('\n');
 
-    await fs.writeFile(listPath, fileList);
+    // Add the last file again without duration (required by concat demuxer)
+    const lastFile = imagePaths[imagePaths.length - 1];
+    const fullList = fileList + `\nfile '${lastFile.replace(/'/g, "'\\''")}'`;
+
+    await fs.writeFile(listPath, fullList);
+    console.log(`Created concat list at ${listPath}`);
 
     // Ensure output directory exists
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -64,22 +76,30 @@ export async function generateDailyVideo(imagePaths, outputPath) {
       // File doesn't exist, that's fine
     }
 
-    // Generate video
+    // Generate video using concat demuxer with image duration
     const args = [
       '-y',
       '-f', 'concat',
       '-safe', '0',
       '-i', listPath,
-      '-framerate', String(FRAME_RATE),
+      '-vsync', 'vfr',
       '-c:v', 'libx264',
       '-pix_fmt', 'yuv420p',
       '-preset', 'medium',
       '-crf', '23',
+      '-r', String(FRAME_RATE),
       outputPath
     ];
 
     await runFFmpeg(args);
-    console.log(`Generated video: ${outputPath}`);
+
+    // Verify output file exists and has content
+    const stats = await fs.stat(outputPath);
+    if (stats.size === 0) {
+      throw new Error('Generated video file is empty');
+    }
+
+    console.log(`Generated video: ${outputPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
 
   } finally {
     // Clean up temp file
