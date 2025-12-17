@@ -56,14 +56,25 @@ function LatestImage() {
       imageDate.setFullYear(year, month - 1, day);
       imageDate.setHours(hours, minutes, seconds, 0);
 
-      // Calculate next capture time range (10 minutes ± 30 seconds)
       const now = new Date();
       const elapsed = (now.getTime() - imageDate.getTime()) / 1000;
 
-      const minRemaining = Math.max(0, (CAPTURE_INTERVAL - CAPTURE_JITTER) - elapsed);
-      const maxRemaining = Math.max(0, (CAPTURE_INTERVAL + CAPTURE_JITTER) - elapsed);
+      // If elapsed time is negative (image from future?), reset
+      if (elapsed < 0) {
+        return { min: CAPTURE_INTERVAL - CAPTURE_JITTER, max: CAPTURE_INTERVAL + CAPTURE_JITTER, overdue: false };
+      }
 
-      return { min: Math.floor(minRemaining), max: Math.floor(maxRemaining) };
+      // Calculate which capture cycle we're in
+      const cycleNumber = Math.floor(elapsed / CAPTURE_INTERVAL);
+      const nextCaptureBase = (cycleNumber + 1) * CAPTURE_INTERVAL;
+
+      const minRemaining = Math.max(0, nextCaptureBase - CAPTURE_JITTER - elapsed);
+      const maxRemaining = Math.max(0, nextCaptureBase + CAPTURE_JITTER - elapsed);
+
+      // Check if we're overdue (past max time for this cycle)
+      const overdue = elapsed > nextCaptureBase + CAPTURE_JITTER;
+
+      return { min: Math.floor(minRemaining), max: Math.floor(maxRemaining), overdue };
     };
 
     const updateCountdown = () => {
@@ -83,16 +94,17 @@ function LatestImage() {
 
   const formatCountdown = (countdown) => {
     if (countdown === null) return '--:--';
-    const { min, max } = countdown;
-
-    if (max === 0) return 'Any moment now...';
-    if (min === 0) return 'Any moment now...';
+    const { min, max, overdue } = countdown;
 
     const formatTime = (secs) => {
       const mins = Math.floor(secs / 60);
       const s = secs % 60;
       return `${mins}:${s.toString().padStart(2, '0')}`;
     };
+
+    if (overdue) return 'Any moment now...';
+    if (min === 0 && max === 0) return 'Any moment now...';
+    if (min === 0) return `0:00 - ${formatTime(max)}`;
 
     return `${formatTime(min)} - ${formatTime(max)}`;
   };
