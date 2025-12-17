@@ -5,6 +5,7 @@ function DaylightVideos() {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [queueStatus, setQueueStatus] = useState(null);
+  const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -34,6 +35,18 @@ function DaylightVideos() {
       setQueueStatus(data);
     } catch (err) {
       console.error('Error fetching queue status:', err);
+    }
+  };
+
+  const generateAll = async () => {
+    setGenerating(true);
+    try {
+      await fetch('/api/videos/generate-all', { method: 'POST' });
+      fetchQueueStatus();
+    } catch (err) {
+      console.error('Error generating videos:', err);
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -101,9 +114,16 @@ function DaylightVideos() {
         <div className="header-actions">
           {queueStatus?.isProcessing && (
             <span className="queue-status">
-              Processing: {queueStatus.currentJob?.type}
+              Processing: {queueStatus.currentJob?.type} ({queueStatus.queueLength} in queue)
             </span>
           )}
+          <button
+            className="btn"
+            onClick={generateAll}
+            disabled={generating || queueStatus?.isProcessing}
+          >
+            {generating ? 'Queueing...' : 'Generate Missing Videos'}
+          </button>
           {videos.length > 0 && (
             <button
               className="btn btn-danger"
@@ -123,7 +143,10 @@ function DaylightVideos() {
       {videos.length === 0 ? (
         <div className="empty-state card">
           <p>No daylight videos generated yet.</p>
-          <p>Videos are automatically generated daily at 2 AM.</p>
+          <p>Videos are automatically generated daily at 2 AM, or you can generate them manually.</p>
+          <button className="btn" onClick={generateAll} disabled={generating}>
+            Generate Now
+          </button>
         </div>
       ) : (
         <div className="video-grid">
