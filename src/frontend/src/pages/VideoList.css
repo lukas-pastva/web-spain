@@ -91,6 +91,17 @@
   cursor: not-allowed;
 }
 
+.video-delete-btn.confirming {
+  opacity: 1;
+  background: rgba(39, 174, 96, 0.9);
+  animation: pulse-confirm 0.5s infinite;
+}
+
+@keyframes pulse-confirm {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
 .video-info {
   padding: 1rem;
   display: flex;
@@ -123,7 +134,19 @@
     align-items: flex-start;
   }
 
+  .video-card {
+    position: relative;
+  }
+
   .video-delete-btn {
     opacity: 1;
+    position: absolute;
+    top: auto;
+    bottom: 1rem;
+    right: 1rem;
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+    z-index: 100;
   }
 }

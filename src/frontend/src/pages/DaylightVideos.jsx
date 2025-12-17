@@ -7,6 +7,7 @@ function DaylightVideos() {
   const [queueStatus, setQueueStatus] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
     fetchVideos();
@@ -58,8 +59,13 @@ function DaylightVideos() {
   };
 
   const deleteVideo = async (filename) => {
-    if (!confirm(`Delete video ${filename}?`)) return;
+    if (confirmDelete !== filename) {
+      setConfirmDelete(filename);
+      setTimeout(() => setConfirmDelete(null), 3000);
+      return;
+    }
 
+    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/videos/daylight/${filename}`, {
@@ -68,12 +74,10 @@ function DaylightVideos() {
       if (response.ok) {
         fetchVideos();
       } else {
-        const error = await response.json();
-        alert(`Failed to delete: ${error.error}`);
+        console.error('Failed to delete video');
       }
     } catch (err) {
       console.error('Error deleting video:', err);
-      alert('Failed to delete video');
     } finally {
       setDeleting(false);
     }
@@ -158,12 +162,12 @@ function DaylightVideos() {
                   Your browser does not support the video tag.
                 </video>
                 <button
-                  className="video-delete-btn"
+                  className={`video-delete-btn ${confirmDelete === video.filename ? 'confirming' : ''}`}
                   onClick={() => deleteVideo(video.filename)}
                   disabled={deleting}
                   title="Delete video"
                 >
-                  🗑️
+                  {confirmDelete === video.filename ? '✓' : '🗑️'}
                 </button>
               </div>
               <div className="video-info">
