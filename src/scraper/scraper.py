@@ -61,16 +61,18 @@ def setup_driver() -> webdriver.Chrome:
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
-    # Set window size larger to ensure viewport is exactly VIEWPORT_WIDTH x VIEWPORT_HEIGHT
+    # Set window size to match old Puppeteer version
     options.add_argument(f'--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}')
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-infobars')
     options.add_argument('--mute-audio')
     options.add_argument('--autoplay-policy=no-user-gesture-required')
-    # Force device scale factor for consistent rendering
+    # Force device scale factor for consistent rendering (like old version)
     options.add_argument('--force-device-scale-factor=1')
     # Disable scrollbars to get clean screenshots
     options.add_argument('--hide-scrollbars')
+    # User agent matching old Puppeteer version
+    options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
 
     # Use Chromium binary from environment or default path
     chrome_bin = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
@@ -599,101 +601,21 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
             # Switch back to main content for screenshot
             driver.switch_to.default_content()
 
-        # Get iframe URL for full resolution capture
-        iframe_url = None
-        try:
-            iframes = driver.find_elements(By.TAG_NAME, 'iframe')
-            for iframe in iframes:
-                src = iframe.get_attribute('src') or ''
-                if 'ipcamlive.com' in src:
-                    iframe_url = src
-                    print(f"Found iframe URL: {iframe_url}")
-                    break
-        except Exception as e:
-            print(f"Failed to get iframe URL: {e}")
+        # Wait a moment for fullscreen to take effect
+        time.sleep(1)
 
-        # Take screenshot
+        # Take full page screenshot (like old Puppeteer version)
+        # If fullscreen worked, video should fill the entire viewport
         timestamp = datetime.now().strftime('%H-%M-%S')
         temp_path = os.path.join(get_temp_dir(), f'raw_{timestamp}.png')
 
-        if iframe_url:
-            # Navigate directly to player URL for full 1920x1080 capture
-            print("Navigating to player URL for full resolution...")
-            driver.get(iframe_url)
+        # Log viewport size
+        viewport = driver.execute_script("return {width: window.innerWidth, height: window.innerHeight}")
+        print(f"Viewport size: {viewport['width']}x{viewport['height']}")
 
-            # Wait longer for player to fully load
-            print("Waiting for player to load...")
-            time.sleep(8)
-
-            # Handle any consent on the player page
-            handle_consent_dialog(driver, timeout=3)
-            time.sleep(1)
-
-            # Generate user gesture by clicking body
-            try:
-                body = driver.find_element(By.TAG_NAME, 'body')
-                body.click()
-                print("Clicked body for user gesture")
-                time.sleep(0.5)
-            except:
-                pass
-
-            # Click center of screen for big play button
-            print("Clicking center for play button...")
-            click_center_of_iframe(driver)
-            time.sleep(3)
-
-            # Try play button selectors
-            handle_player_in_iframe(driver)
-            time.sleep(2)
-
-            # Wait for video to play
-            print("Waiting for video...")
-            for attempt in range(3):
-                if wait_for_video_playing(driver, timeout=10):
-                    print("Video is playing!")
-                    break
-                print(f"Retry {attempt + 1}: clicking play again...")
-                click_center_of_iframe(driver)
-                time.sleep(2)
-
-            # Final wait for video frame
-            time.sleep(3)
-
-            # Check what we have
-            page_info = driver.execute_script("""
-                var v = document.querySelector('video');
-                var body = document.body;
-                return {
-                    hasVideo: !!v,
-                    videoPlaying: v ? !v.paused : false,
-                    videoWidth: v ? v.videoWidth : 0,
-                    videoHeight: v ? v.videoHeight : 0,
-                    bodyWidth: body ? body.clientWidth : 0,
-                    bodyHeight: body ? body.clientHeight : 0,
-                    viewportWidth: window.innerWidth,
-                    viewportHeight: window.innerHeight
-                };
-            """)
-            print(f"Page info: {page_info}")
-
-            # Take screenshot
-            driver.save_screenshot(temp_path)
-            print(f"Screenshot saved: {temp_path}")
-        else:
-            # Fallback: screenshot iframe element on main page
-            print("No iframe URL, taking iframe element screenshot...")
-            try:
-                iframes = driver.find_elements(By.TAG_NAME, 'iframe')
-                for iframe in iframes:
-                    src = iframe.get_attribute('src') or ''
-                    if 'ipcamlive.com' in src:
-                        iframe.screenshot(temp_path)
-                        print(f"Iframe screenshot saved: {temp_path}")
-                        break
-            except:
-                driver.save_screenshot(temp_path)
-                print(f"Full page screenshot saved: {temp_path}")
+        # Take full page screenshot at viewport resolution
+        driver.save_screenshot(temp_path)
+        print(f"Screenshot saved: {temp_path}")
 
         return temp_path
 
