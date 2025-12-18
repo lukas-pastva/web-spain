@@ -24,6 +24,12 @@ class VideoService {
     await this.ensureDirectories();
     const typePath = path.join(this.videosPath, type);
 
+    // Get sunrise/sunset times for daylight videos
+    let sunTimes = null;
+    if (type === 'daylight') {
+      sunTimes = await this.getSunTimes();
+    }
+
     try {
       const files = await fs.readdir(typePath);
       const videos = await Promise.all(
@@ -32,13 +38,18 @@ class VideoService {
           .map(async file => {
             const filePath = path.join(typePath, file);
             const stats = await fs.stat(filePath);
-            return {
+            const videoData = {
               filename: file,
               date: file.replace(/(-daylight)?\.mp4$/i, ''),
               url: `/storage/videos/${type}/${file}`,
               size: stats.size,
               createdAt: stats.birthtime
             };
+            if (sunTimes) {
+              videoData.sunrise = sunTimes.sunrise;
+              videoData.sunset = sunTimes.sunset;
+            }
+            return videoData;
           })
       );
 
@@ -49,6 +60,22 @@ class VideoService {
       }
       throw error;
     }
+  }
+
+  async getSunTimes() {
+    const metadataPath = path.join(OUTPUT_DIR, 'metadata', 'weather_cache.json');
+    try {
+      const cache = JSON.parse(await fs.readFile(metadataPath, 'utf-8'));
+      if (cache.alicante?.data) {
+        return {
+          sunrise: cache.alicante.data.sunrise || '06:00',
+          sunset: cache.alicante.data.sunset || '20:00'
+        };
+      }
+    } catch (error) {
+      // Ignore errors
+    }
+    return { sunrise: '06:00', sunset: '20:00' };
   }
 
   getQueueStatus() {

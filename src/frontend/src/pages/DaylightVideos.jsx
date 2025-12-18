@@ -161,6 +161,11 @@ function DaylightVideos() {
                   <source src={video.url} type="video/mp4" />
                   Your browser does not support the video tag.
                 </video>
+                {video.sunrise && video.sunset && (
+                  <div className="video-time-overlay">
+                    {video.sunrise} - {video.sunset}
+                  </div>
+                )}
                 <button
                   className={`video-delete-btn ${confirmDelete === video.filename ? 'confirming' : ''}`}
                   onClick={() => deleteVideo(video.filename)}
