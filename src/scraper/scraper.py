@@ -565,6 +565,9 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
     # Wait for page to load (POST_NAV_WAIT_MS in old version)
     time.sleep(5)
 
+    # Zoom out to capture full content (90% zoom)
+    driver.execute_script("document.body.style.zoom = '0.9'")
+
     try:
         # Step 1: Dismiss cookie/notification banner on main page
         print("Checking for cookie banner...")

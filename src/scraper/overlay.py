@@ -241,24 +241,31 @@ def add_overlay(
         # Resize to 800x450 (16:9) if needed
         target_width, target_height = 800, 450
         if image.size != (target_width, target_height):
-            # Crop to 16:9 aspect ratio first (from center)
+            # Fit image to target size without cropping (letterbox if needed)
             img_width, img_height = image.size
             target_ratio = target_width / target_height
             img_ratio = img_width / img_height
 
-            if img_ratio > target_ratio:
-                # Image is wider, crop width
-                new_width = int(img_height * target_ratio)
-                left = (img_width - new_width) // 2
-                image = image.crop((left, 0, left + new_width, img_height))
-            elif img_ratio < target_ratio:
-                # Image is taller, crop height
-                new_height = int(img_width / target_ratio)
-                top = (img_height - new_height) // 2
-                image = image.crop((0, top, img_width, top + new_height))
+            # Create black background
+            result = Image.new('RGB', (target_width, target_height), (0, 0, 0))
 
-            # Resize to exact dimensions
-            image = image.resize((target_width, target_height), Image.LANCZOS)
+            if img_ratio > target_ratio:
+                # Image is wider - fit to width, letterbox top/bottom
+                new_width = target_width
+                new_height = int(target_width / img_ratio)
+            else:
+                # Image is taller - fit to height, letterbox left/right
+                new_height = target_height
+                new_width = int(target_height * img_ratio)
+
+            # Resize image maintaining aspect ratio
+            resized = image.resize((new_width, new_height), Image.LANCZOS)
+
+            # Center on black background
+            x_offset = (target_width - new_width) // 2
+            y_offset = (target_height - new_height) // 2
+            result.paste(resized, (x_offset, y_offset))
+            image = result
 
         draw = ImageDraw.Draw(image)
         width, height = image.size
