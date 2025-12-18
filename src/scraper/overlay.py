@@ -238,45 +238,38 @@ def add_overlay(
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
-        # Apply custom crop: remove 5% from left/right, add 2% to top/bottom
+        # Crop positions from environment variables (percentages 0-100)
+        # CROP_X1: left edge (default 0)
+        # CROP_Y1: top edge (default 0)
+        # CROP_X2: right edge (default 100)
+        # CROP_Y2: bottom edge (default 100)
         img_width, img_height = image.size
 
-        # Crop 5% from each side (left and right)
-        crop_left = int(img_width * 0.05)
-        crop_right = int(img_width * 0.95)
-        # Expand 2% on top/bottom (negative crop = include more, but we can't add pixels)
-        # So we crop less: 0% from top, 0% from bottom (keep full height)
-        crop_top = 0
-        crop_bottom = img_height
+        x1 = float(os.environ.get('CROP_X1', '0')) / 100
+        y1 = float(os.environ.get('CROP_Y1', '0')) / 100
+        x2 = float(os.environ.get('CROP_X2', '100')) / 100
+        y2 = float(os.environ.get('CROP_Y2', '100')) / 100
 
-        image = image.crop((crop_left, crop_top, crop_right, crop_bottom))
+        left = int(img_width * x1)
+        top = int(img_height * y1)
+        right = int(img_width * x2)
+        bottom = int(img_height * y2)
 
-        # Resize to 800x450 (16:9)
-        target_width, target_height = 800, 450
-        img_width, img_height = image.size
-        target_ratio = target_width / target_height
-        img_ratio = img_width / img_height
+        # Clamp to image bounds
+        left = max(0, left)
+        top = max(0, top)
+        right = min(right, img_width)
+        bottom = min(bottom, img_height)
 
-        # Create black background
-        result = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+        if right > left and bottom > top:
+            image = image.crop((left, top, right, bottom))
 
-        if img_ratio > target_ratio:
-            # Image is wider - fit to width, letterbox top/bottom
-            new_width = target_width
-            new_height = int(target_width / img_ratio)
-        else:
-            # Image is taller - fit to height, letterbox left/right
-            new_height = target_height
-            new_width = int(target_height * img_ratio)
+        # Resize to target dimensions from env (default 800x450)
+        target_width = int(os.environ.get('OUTPUT_WIDTH', '800'))
+        target_height = int(os.environ.get('OUTPUT_HEIGHT', '450'))
 
-        # Resize image maintaining aspect ratio
-        resized = image.resize((new_width, new_height), Image.LANCZOS)
-
-        # Center on black background
-        x_offset = (target_width - new_width) // 2
-        y_offset = (target_height - new_height) // 2
-        result.paste(resized, (x_offset, y_offset))
-        image = result
+        # Resize to exact dimensions
+        image = image.resize((target_width, target_height), Image.LANCZOS)
 
         draw = ImageDraw.Draw(image)
         width, height = image.size
