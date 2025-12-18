@@ -214,7 +214,8 @@ def add_overlay(
     image_path: str,
     output_path: str,
     alicante_weather: Optional[Dict],
-    bratislava_weather: Optional[Dict]
+    bratislava_weather: Optional[Dict],
+    capture_time: Optional[str] = None
 ) -> bool:
     """
     Add weather overlay to an image.
@@ -224,6 +225,7 @@ def add_overlay(
         output_path: Path to save the output image
         alicante_weather: Weather data for Alicante
         bratislava_weather: Weather data for Bratislava
+        capture_time: Timestamp string to display (e.g., "14:30:45")
 
     Returns:
         True if successful, False otherwise
@@ -306,6 +308,16 @@ def add_overlay(
                 'Bratislava',
                 gauge_size
             )
+
+        # Draw capture time at bottom center
+        if capture_time:
+            time_font = get_font(36)
+            bbox = draw.textbbox((0, 0), capture_time, font=time_font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            time_x = (width - text_width) // 2
+            time_y = height - text_height - 20
+            draw_text_with_shadow(draw, (time_x, time_y), capture_time, time_font)
 
         # Save image
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

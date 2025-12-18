@@ -652,11 +652,12 @@ def process_screenshot(raw_path: str) -> str:
 
     # Generate output path
     timestamp = datetime.now().strftime('%H-%M-%S')
+    display_time = datetime.now().strftime('%H:%M:%S')
     output_path = os.path.join(get_screenshot_dir(), f'{timestamp}.jpg')
 
     # Add overlay
     print("Adding weather overlay...")
-    success = add_overlay(raw_path, output_path, alicante, bratislava)
+    success = add_overlay(raw_path, output_path, alicante, bratislava, display_time)
 
     if success:
         print(f"Final screenshot saved to: {output_path}")
