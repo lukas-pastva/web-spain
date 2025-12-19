@@ -39,6 +39,7 @@ class ImageService {
       const images = files
         .filter(file => /\.(jpg|jpeg|png)$/i.test(file))
         .sort()
+        .reverse()
         .map(file => ({
           filename: file,
           time: file.replace(/\.(jpg|jpeg|png)$/i, '').replace(/-/g, ':'),
