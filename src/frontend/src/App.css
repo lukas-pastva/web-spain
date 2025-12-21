@@ -90,3 +90,13 @@
 .btn-danger:hover {
   box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
 }
+
+.btn.confirming {
+  background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+  animation: pulse-confirm 0.5s infinite;
+}
+
+@keyframes pulse-confirm {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}

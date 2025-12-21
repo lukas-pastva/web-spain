@@ -7,6 +7,7 @@ function DailyVideos() {
   const [queueStatus, setQueueStatus] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   useEffect(() => {
     fetchVideos();
@@ -58,8 +59,13 @@ function DailyVideos() {
   };
 
   const deleteVideo = async (filename) => {
-    if (!confirm(`Delete video ${filename}?`)) return;
+    if (confirmDelete !== filename) {
+      setConfirmDelete(filename);
+      setTimeout(() => setConfirmDelete(null), 3000);
+      return;
+    }
 
+    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/videos/daily/${filename}`, {
@@ -68,36 +74,35 @@ function DailyVideos() {
       if (response.ok) {
         fetchVideos();
       } else {
-        const error = await response.json();
-        alert(`Failed to delete: ${error.error}`);
+        console.error('Failed to delete video');
       }
     } catch (err) {
       console.error('Error deleting video:', err);
-      alert('Failed to delete video');
     } finally {
       setDeleting(false);
     }
   };
 
   const deleteAllVideos = async () => {
-    if (!confirm('Delete ALL daily videos? This cannot be undone!')) return;
+    if (confirmDelete !== 'all') {
+      setConfirmDelete('all');
+      setTimeout(() => setConfirmDelete(null), 3000);
+      return;
+    }
 
+    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch('/api/videos/daily', {
         method: 'DELETE'
       });
       if (response.ok) {
-        const result = await response.json();
-        alert(`Deleted ${result.deleted} videos`);
         fetchVideos();
       } else {
-        const error = await response.json();
-        alert(`Failed to delete: ${error.error}`);
+        console.error('Failed to delete videos');
       }
     } catch (err) {
       console.error('Error deleting videos:', err);
-      alert('Failed to delete videos');
     } finally {
       setDeleting(false);
     }
@@ -126,11 +131,11 @@ function DailyVideos() {
           </button>
           {videos.length > 0 && (
             <button
-              className="btn btn-danger"
+              className={`btn btn-danger ${confirmDelete === 'all' ? 'confirming' : ''}`}
               onClick={deleteAllVideos}
               disabled={deleting}
             >
-              {deleting ? 'Deleting...' : 'Delete All'}
+              {confirmDelete === 'all' ? 'Click again to confirm' : deleting ? 'Deleting...' : 'Delete All'}
             </button>
           )}
         </div>
@@ -154,12 +159,12 @@ function DailyVideos() {
                   Your browser does not support the video tag.
                 </video>
                 <button
-                  className="video-delete-btn"
+                  className={`video-delete-btn ${confirmDelete === video.filename ? 'confirming' : ''}`}
                   onClick={() => deleteVideo(video.filename)}
                   disabled={deleting}
                   title="Delete video"
                 >
-                  🗑️
+                  {confirmDelete === video.filename ? '✓' : '🗑️'}
                 </button>
               </div>
               <div className="video-info">

@@ -10,6 +10,7 @@ function DailyImages() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const touchStartX = useRef(null);
 
   useEffect(() => {
@@ -106,8 +107,13 @@ function DailyImages() {
   };
 
   const deleteImage = async (date, filename) => {
-    if (!confirm(`Delete image ${filename}?`)) return;
+    if (confirmDelete !== filename) {
+      setConfirmDelete(filename);
+      setTimeout(() => setConfirmDelete(null), 3000);
+      return;
+    }
 
+    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/images/day/${date}/${filename}`, {
@@ -118,38 +124,37 @@ function DailyImages() {
         fetchImages(date);
         setSelectedImage(null);
       } else {
-        const error = await response.json();
-        alert(`Failed to delete: ${error.error}`);
+        console.error('Failed to delete image');
       }
     } catch (err) {
       console.error('Error deleting image:', err);
-      alert('Failed to delete image');
     } finally {
       setDeleting(false);
     }
   };
 
   const deleteAllImages = async (date) => {
-    if (!confirm(`Delete ALL images for ${date}? This cannot be undone!`)) return;
+    if (confirmDelete !== 'all') {
+      setConfirmDelete('all');
+      setTimeout(() => setConfirmDelete(null), 3000);
+      return;
+    }
 
+    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/images/day/${date}`, {
         method: 'DELETE'
       });
       if (response.ok) {
-        const result = await response.json();
-        alert(`Deleted ${result.deleted} images`);
         // Refresh days list
         fetchDays();
         setImages([]);
       } else {
-        const error = await response.json();
-        alert(`Failed to delete: ${error.error}`);
+        console.error('Failed to delete images');
       }
     } catch (err) {
       console.error('Error deleting images:', err);
-      alert('Failed to delete images');
     } finally {
       setDeleting(false);
     }
@@ -190,11 +195,11 @@ function DailyImages() {
         </span>
         {selectedDay && images.length > 0 && (
           <button
-            className="btn btn-danger"
+            className={`btn btn-danger ${confirmDelete === 'all' ? 'confirming' : ''}`}
             onClick={() => deleteAllImages(selectedDay)}
             disabled={deleting}
           >
-            {deleting ? 'Deleting...' : 'Delete All'}
+            {confirmDelete === 'all' ? 'Click again to confirm' : deleting ? 'Deleting...' : 'Delete All'}
           </button>
         )}
       </div>
@@ -217,14 +222,14 @@ function DailyImages() {
                 loading="lazy"
               />
               <button
-                className="image-delete-btn"
+                className={`image-delete-btn ${confirmDelete === img.filename ? 'confirming' : ''}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   deleteImage(selectedDay, img.filename);
                 }}
                 title="Delete image"
               >
-                🗑️
+                {confirmDelete === img.filename ? '✓' : '🗑️'}
               </button>
               <div className="image-time">{img.time}</div>
             </div>
@@ -271,11 +276,11 @@ function DailyImages() {
                 Download
               </a>
               <button
-                className="btn btn-danger"
+                className={`btn btn-danger ${confirmDelete === selectedImage.filename ? 'confirming' : ''}`}
                 onClick={() => deleteImage(selectedDay, selectedImage.filename)}
                 disabled={deleting}
               >
-                {deleting ? 'Deleting...' : 'Delete'}
+                {confirmDelete === selectedImage.filename ? 'Click again to confirm' : deleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

@@ -91,6 +91,17 @@
   background: rgba(192, 57, 43, 1);
 }
 
+.image-delete-btn.confirming {
+  opacity: 1;
+  background: rgba(39, 174, 96, 0.9);
+  animation: pulse-confirm 0.5s infinite;
+}
+
+@keyframes pulse-confirm {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
 .image-time {
   padding: 0.5rem;
   text-align: center;
