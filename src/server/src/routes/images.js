@@ -37,7 +37,7 @@ router.get('/day/:date', async (req, res) => {
       return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
     }
     const images = await imageService.getImagesForDay(date);
-    res.json(images);
+    res.json(images.reverse());
   } catch (error) {
     console.error('Error getting images for day:', error);
     res.status(500).json({ error: 'Internal server error' });
