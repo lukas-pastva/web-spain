@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import './VideoList.css';
+import { useConfirmDelete } from '../hooks/useConfirmDelete';
+import { DeleteButton } from '../components/DeleteButton';
 
 function CombinedDaylightVideos() {
   const [videos, setVideos] = useState([]);
@@ -7,7 +9,7 @@ function CombinedDaylightVideos() {
   const [queueStatus, setQueueStatus] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null);
+  const { requestConfirm, isConfirming } = useConfirmDelete();
 
   useEffect(() => {
     fetchVideos();
@@ -67,13 +69,8 @@ function CombinedDaylightVideos() {
   };
 
   const deleteVideo = async (filename) => {
-    if (confirmDelete !== filename) {
-      setConfirmDelete(filename);
-      setTimeout(() => setConfirmDelete(null), 3000);
-      return;
-    }
+    if (!requestConfirm(filename)) return;
 
-    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/videos/combined-daylight/${filename}`, {
@@ -136,14 +133,13 @@ function CombinedDaylightVideos() {
                   <source src={video.url} type="video/mp4" />
                   Your browser does not support the video tag.
                 </video>
-                <button
-                  className={`video-delete-btn ${confirmDelete === video.filename ? 'confirming' : ''}`}
+                <DeleteButton
+                  className="video-delete-btn"
                   onClick={() => deleteVideo(video.filename)}
+                  isConfirming={isConfirming(video.filename)}
                   disabled={deleting}
                   title="Delete video"
-                >
-                  {confirmDelete === video.filename ? '✓' : '🗑️'}
-                </button>
+                />
               </div>
               <div className="video-info">
                 <h3>All Daylight Combined</h3>

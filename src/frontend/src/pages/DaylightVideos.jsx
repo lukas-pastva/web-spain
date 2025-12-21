@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import './VideoList.css';
+import { useConfirmDelete } from '../hooks/useConfirmDelete';
+import { DeleteButton, ConfirmButton } from '../components/DeleteButton';
 
 function DaylightVideos() {
   const [videos, setVideos] = useState([]);
@@ -7,7 +9,7 @@ function DaylightVideos() {
   const [queueStatus, setQueueStatus] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null);
+  const { requestConfirm, isConfirming } = useConfirmDelete();
 
   useEffect(() => {
     fetchVideos();
@@ -59,13 +61,8 @@ function DaylightVideos() {
   };
 
   const deleteVideo = async (filename) => {
-    if (confirmDelete !== filename) {
-      setConfirmDelete(filename);
-      setTimeout(() => setConfirmDelete(null), 3000);
-      return;
-    }
+    if (!requestConfirm(filename)) return;
 
-    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/videos/daylight/${filename}`, {
@@ -84,7 +81,7 @@ function DaylightVideos() {
   };
 
   const deleteAllVideos = async () => {
-    if (!confirm('Delete ALL daylight videos? This cannot be undone!')) return;
+    if (!requestConfirm('all')) return;
 
     setDeleting(true);
     try {
@@ -92,16 +89,12 @@ function DaylightVideos() {
         method: 'DELETE'
       });
       if (response.ok) {
-        const result = await response.json();
-        alert(`Deleted ${result.deleted} videos`);
         fetchVideos();
       } else {
-        const error = await response.json();
-        alert(`Failed to delete: ${error.error}`);
+        console.error('Failed to delete videos');
       }
     } catch (err) {
       console.error('Error deleting videos:', err);
-      alert('Failed to delete videos');
     } finally {
       setDeleting(false);
     }
@@ -129,13 +122,13 @@ function DaylightVideos() {
             {generating ? 'Queueing...' : 'Generate Missing Videos'}
           </button>
           {videos.length > 0 && (
-            <button
-              className="btn btn-danger"
+            <ConfirmButton
               onClick={deleteAllVideos}
+              isConfirming={isConfirming('all')}
               disabled={deleting}
             >
-              {deleting ? 'Deleting...' : 'Delete All'}
-            </button>
+              Delete All
+            </ConfirmButton>
           )}
         </div>
       </div>
@@ -166,14 +159,13 @@ function DaylightVideos() {
                     {video.sunrise} - {video.sunset}
                   </div>
                 )}
-                <button
-                  className={`video-delete-btn ${confirmDelete === video.filename ? 'confirming' : ''}`}
+                <DeleteButton
+                  className="video-delete-btn"
                   onClick={() => deleteVideo(video.filename)}
+                  isConfirming={isConfirming(video.filename)}
                   disabled={deleting}
                   title="Delete video"
-                >
-                  {confirmDelete === video.filename ? '✓' : '🗑️'}
-                </button>
+                />
               </div>
               <div className="video-info">
                 <h3>{video.date.replace('-daylight', '')}</h3>

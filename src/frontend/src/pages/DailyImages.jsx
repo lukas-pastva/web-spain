@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './DailyImages.css';
+import { useConfirmDelete } from '../hooks/useConfirmDelete';
+import { DeleteButton, ConfirmButton } from '../components/DeleteButton';
 
 function DailyImages() {
   const [days, setDays] = useState([]);
@@ -10,7 +12,7 @@ function DailyImages() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null);
+  const { requestConfirm, isConfirming } = useConfirmDelete();
   const touchStartX = useRef(null);
 
   useEffect(() => {
@@ -107,13 +109,8 @@ function DailyImages() {
   };
 
   const deleteImage = async (date, filename) => {
-    if (confirmDelete !== filename) {
-      setConfirmDelete(filename);
-      setTimeout(() => setConfirmDelete(null), 3000);
-      return;
-    }
+    if (!requestConfirm(filename)) return;
 
-    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/images/day/${date}/${filename}`, {
@@ -134,13 +131,8 @@ function DailyImages() {
   };
 
   const deleteAllImages = async (date) => {
-    if (confirmDelete !== 'all') {
-      setConfirmDelete('all');
-      setTimeout(() => setConfirmDelete(null), 3000);
-      return;
-    }
+    if (!requestConfirm('all')) return;
 
-    setConfirmDelete(null);
     setDeleting(true);
     try {
       const response = await fetch(`/api/images/day/${date}`, {
@@ -194,13 +186,13 @@ function DailyImages() {
           {images.length} images
         </span>
         {selectedDay && images.length > 0 && (
-          <button
-            className={`btn btn-danger ${confirmDelete === 'all' ? 'confirming' : ''}`}
+          <ConfirmButton
             onClick={() => deleteAllImages(selectedDay)}
+            isConfirming={isConfirming('all')}
             disabled={deleting}
           >
-            {confirmDelete === 'all' ? 'Click again to confirm' : deleting ? 'Deleting...' : 'Delete All'}
-          </button>
+            Delete All
+          </ConfirmButton>
         )}
       </div>
 
@@ -221,16 +213,15 @@ function DailyImages() {
                 alt={`Capture at ${img.time}`}
                 loading="lazy"
               />
-              <button
-                className={`image-delete-btn ${confirmDelete === img.filename ? 'confirming' : ''}`}
+              <DeleteButton
+                className="image-delete-btn"
                 onClick={(e) => {
                   e.stopPropagation();
                   deleteImage(selectedDay, img.filename);
                 }}
+                isConfirming={isConfirming(img.filename)}
                 title="Delete image"
-              >
-                {confirmDelete === img.filename ? '✓' : '🗑️'}
-              </button>
+              />
               <div className="image-time">{img.time}</div>
             </div>
           ))}
@@ -275,13 +266,13 @@ function DailyImages() {
               >
                 Download
               </a>
-              <button
-                className={`btn btn-danger ${confirmDelete === selectedImage.filename ? 'confirming' : ''}`}
+              <ConfirmButton
                 onClick={() => deleteImage(selectedDay, selectedImage.filename)}
+                isConfirming={isConfirming(selectedImage.filename)}
                 disabled={deleting}
               >
-                {confirmDelete === selectedImage.filename ? 'Click again to confirm' : deleting ? 'Deleting...' : 'Delete'}
-              </button>
+                Delete
+              </ConfirmButton>
             </div>
           </div>
         </div>
