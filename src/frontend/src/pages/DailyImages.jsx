@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import './DailyImages.css';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { DeleteButton, ConfirmButton } from '../components/DeleteButton';
-import { DateIndicator } from '../components/DateIndicator';
 
 function DailyImages() {
   const [days, setDays] = useState([]);
@@ -164,7 +163,7 @@ function DailyImages() {
       });
       if (response.ok) {
         const result = await response.json();
-        console.log(`Processed ${result.processed} images`);
+        console.log(`✓ Processed ${result.processed} images with date indicators`);
         // Refresh images to show updated versions
         fetchImages(date);
       } else {
@@ -216,9 +215,9 @@ function DailyImages() {
               className="btn"
               onClick={() => processImages(selectedDay)}
               disabled={processing}
-              title="Add date indicator overlay to all images"
+              title="Burn date indicator into image files (required for videos)"
             >
-              {processing ? 'Processing...' : '📅 Add Date Overlay'}
+              {processing ? 'Processing...' : '📅 Add Date to Images'}
             </button>
             <ConfirmButton
               onClick={() => deleteAllImages(selectedDay)}
@@ -243,14 +242,11 @@ function DailyImages() {
               className="image-card"
               onClick={() => openImage(img, index)}
             >
-              <div className="image-wrapper">
-                <img
-                  src={img.url}
-                  alt={`Capture at ${img.time}`}
-                  loading="lazy"
-                />
-                <DateIndicator date={selectedDay} />
-              </div>
+              <img
+                src={img.url}
+                alt={`Capture at ${img.time}`}
+                loading="lazy"
+              />
               <DeleteButton
                 className="image-delete-btn"
                 onClick={(e) => {
@@ -292,10 +288,7 @@ function DailyImages() {
             >
               &times;
             </button>
-            <div className="lightbox-image-wrapper">
-              <img src={selectedImage.url} alt={`Capture at ${selectedImage.time}`} />
-              <DateIndicator date={selectedDay} />
-            </div>
+            <img src={selectedImage.url} alt={`Capture at ${selectedImage.time}`} />
             <div className="lightbox-info">
               <span className="lightbox-counter">{selectedIndex + 1} / {images.length}</span>
               <span>{selectedDay}</span>
