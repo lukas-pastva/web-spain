@@ -13,6 +13,7 @@ function DailyImages() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const { requestConfirm, isConfirming } = useConfirmDelete();
   const touchStartX = useRef(null);
 
@@ -153,6 +154,29 @@ function DailyImages() {
     }
   };
 
+  const processImages = async (date) => {
+    setProcessing(true);
+    try {
+      const response = await fetch(`/api/images/process/${date}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inPlace: true })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`Processed ${result.processed} images`);
+        // Refresh images to show updated versions
+        fetchImages(date);
+      } else {
+        console.error('Failed to process images');
+      }
+    } catch (err) {
+      console.error('Error processing images:', err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
@@ -187,13 +211,23 @@ function DailyImages() {
           {images.length} images
         </span>
         {selectedDay && images.length > 0 && (
-          <ConfirmButton
-            onClick={() => deleteAllImages(selectedDay)}
-            isConfirming={isConfirming('all')}
-            disabled={deleting}
-          >
-            Delete All
-          </ConfirmButton>
+          <>
+            <button
+              className="btn"
+              onClick={() => processImages(selectedDay)}
+              disabled={processing}
+              title="Add date indicator overlay to all images"
+            >
+              {processing ? 'Processing...' : '📅 Add Date Overlay'}
+            </button>
+            <ConfirmButton
+              onClick={() => deleteAllImages(selectedDay)}
+              isConfirming={isConfirming('all')}
+              disabled={deleting}
+            >
+              Delete All
+            </ConfirmButton>
+          </>
         )}
       </div>
 
