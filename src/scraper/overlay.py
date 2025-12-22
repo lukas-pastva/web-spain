@@ -5,6 +5,8 @@ Adds weather information and temperature gauges to webcam screenshots
 from PIL import Image, ImageDraw, ImageFont
 import math
 import os
+from datetime import datetime, timedelta
+from calendar import monthrange
 from typing import Dict, Tuple, Optional
 
 
@@ -210,6 +212,125 @@ def draw_temperature_gauge(
     )
 
 
+def draw_date_indicator(
+    draw: ImageDraw.Draw,
+    width: int,
+    height: int,
+    current_date: datetime
+) -> None:
+    """
+    Draw a date indicator at the bottom of the image showing:
+    - 5-month timeline (2 before, current, 2 after)
+    - Day marker showing position within the month
+
+    Args:
+        draw: PIL ImageDraw object
+        width: Image width
+        height: Image height
+        current_date: Current date
+    """
+    # Calculate overlay dimensions (responsive to image size)
+    overlay_height = max(60, int(height * 0.13))
+    bottom_padding = 10
+    overlay_y = height - overlay_height - bottom_padding
+
+    # Semi-transparent dark background
+    draw.rectangle(
+        [(0, overlay_y), (width, height)],
+        fill=(0, 0, 0, 200)
+    )
+
+    # Generate 5 months centered around current month
+    months = []
+    for i in range(-2, 3):
+        target_date = current_date + timedelta(days=i * 30)
+        target_date = target_date.replace(day=1)
+        months.append({
+            'label': target_date.strftime('%Y-%m'),
+            'is_active': i == 0
+        })
+
+    # Draw month timeline
+    month_font_size = max(11, int(overlay_height * 0.18))
+    month_font = get_font(month_font_size)
+    active_font_size = max(13, int(overlay_height * 0.22))
+    active_font = get_font(active_font_size)
+
+    month_y = overlay_y + 10
+    month_width = width // 5
+
+    for idx, month_info in enumerate(months):
+        font = active_font if month_info['is_active'] else month_font
+        color = (255, 255, 255) if month_info['is_active'] else (255, 255, 255, 100)
+
+        # Center the month label
+        bbox = draw.textbbox((0, 0), month_info['label'], font=font)
+        text_width = bbox[2] - bbox[0]
+        month_x = (idx * month_width) + (month_width - text_width) // 2
+
+        draw.text((month_x, month_y), month_info['label'], font=font, fill=color)
+
+    # Calculate day position within month
+    day = current_date.day
+    days_in_month = monthrange(current_date.year, current_date.month)[1]
+    day_position = (day - 1) / (days_in_month - 1) if days_in_month > 1 else 0.5
+
+    # Draw track bar
+    track_height = max(4, int(overlay_height * 0.08))
+    track_y = overlay_y + int(overlay_height * 0.65)
+    track_margin = 40
+    track_width = width - (track_margin * 2)
+    track_x = track_margin
+
+    # Purple/blue gradient track (simulate with solid color for simplicity)
+    draw.rectangle(
+        [(track_x, track_y), (track_x + track_width, track_y + track_height)],
+        fill=(102, 126, 234)
+    )
+
+    # Draw day marker
+    marker_x = track_x + int(track_width * day_position)
+    marker_height = max(20, int(overlay_height * 0.35))
+    marker_width = 3
+    marker_y_start = track_y - (marker_height - track_height) // 2
+
+    # Glowing white marker line
+    draw.rectangle(
+        [(marker_x - marker_width//2, marker_y_start),
+         (marker_x + marker_width//2, marker_y_start + marker_height)],
+        fill=(255, 255, 255)
+    )
+
+    # Day number label above marker
+    day_font_size = max(12, int(overlay_height * 0.20))
+    day_font = get_font(day_font_size)
+    day_text = str(day)
+    bbox = draw.textbbox((0, 0), day_text, font=day_font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    label_padding = 4
+    label_x = marker_x - text_width // 2 - label_padding
+    label_y = marker_y_start - text_height - 10
+    label_width = text_width + label_padding * 2
+    label_height = text_height + label_padding
+
+    # Purple/blue gradient label background
+    draw.rounded_rectangle(
+        [(label_x, label_y), (label_x + label_width, label_y + label_height)],
+        radius=4,
+        fill=(102, 126, 234)
+    )
+
+    # Day number text
+    draw.text(
+        (marker_x - text_width // 2, label_y + label_padding // 2),
+        day_text,
+        font=day_font,
+        fill=(255, 255, 255)
+    )
+
+
 def add_overlay(
     image_path: str,
     output_path: str,
@@ -320,15 +441,9 @@ def add_overlay(
                 gauge_size
             )
 
-        # Draw capture time at bottom center
-        if capture_time:
-            time_font = get_font(36)
-            bbox = draw.textbbox((0, 0), capture_time, font=time_font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            time_x = (width - text_width) // 2
-            time_y = height - text_height - 20
-            draw_text_with_shadow(draw, (time_x, time_y), capture_time, time_font)
+        # Draw date indicator at bottom
+        current_date = datetime.now()
+        draw_date_indicator(draw, width, height, current_date)
 
         # Save image
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
