@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import './DailyImages.css';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { DeleteButton, ConfirmButton } from '../components/DeleteButton';
+import { DateIndicator } from '../components/DateIndicator';
 
 function DailyImages() {
   const [days, setDays] = useState([]);
@@ -208,11 +209,14 @@ function DailyImages() {
               className="image-card"
               onClick={() => openImage(img, index)}
             >
-              <img
-                src={img.url}
-                alt={`Capture at ${img.time}`}
-                loading="lazy"
-              />
+              <div className="image-wrapper">
+                <img
+                  src={img.url}
+                  alt={`Capture at ${img.time}`}
+                  loading="lazy"
+                />
+                <DateIndicator date={selectedDay} />
+              </div>
               <DeleteButton
                 className="image-delete-btn"
                 onClick={(e) => {
@@ -254,7 +258,10 @@ function DailyImages() {
             >
               &times;
             </button>
-            <img src={selectedImage.url} alt={`Capture at ${selectedImage.time}`} />
+            <div className="lightbox-image-wrapper">
+              <img src={selectedImage.url} alt={`Capture at ${selectedImage.time}`} />
+              <DateIndicator date={selectedDay} />
+            </div>
             <div className="lightbox-info">
               <span className="lightbox-counter">{selectedIndex + 1} / {images.length}</span>
               <span>{selectedDay}</span>

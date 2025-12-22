@@ -55,6 +55,11 @@
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
 }
 
+.image-wrapper {
+  position: relative;
+  width: 100%;
+}
+
 .image-card img {
   width: 100%;
   aspect-ratio: 16/9;
@@ -131,10 +136,16 @@
   max-height: 90vh;
 }
 
+.lightbox-image-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
 .lightbox-content img {
   max-width: 100%;
   max-height: 80vh;
   border-radius: 8px;
+  display: block;
 }
 
 .lightbox-close {
