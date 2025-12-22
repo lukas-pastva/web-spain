@@ -229,16 +229,12 @@ def draw_date_indicator(
         height: Image height
         current_date: Current date
     """
-    # Calculate overlay dimensions (responsive to image size)
-    overlay_height = max(60, int(height * 0.13))
+    # Calculate overlay dimensions (responsive to image size) - reduced to half
+    overlay_height = max(30, int(height * 0.065))
     bottom_padding = 10
     overlay_y = height - overlay_height - bottom_padding
 
-    # Semi-transparent dark background
-    draw.rectangle(
-        [(0, overlay_y), (width, height)],
-        fill=(0, 0, 0, 200)
-    )
+    # No background - transparent
 
     # Generate 5 months centered around current month
     months = []
@@ -416,7 +412,7 @@ def add_overlay(
             )
 
         # Draw temperature gauges
-        gauge_size = 120
+        gauge_size = 80
         gauge_y = height - gauge_size // 2 - 50
 
         # Alicante gauge (bottom-left)
