@@ -41,9 +41,9 @@
 .video-card {
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
   padding: 0;
-  width: 800px;
+  width: fit-content;
   flex-shrink: 0;
 }
 
@@ -53,7 +53,6 @@
   max-width: none;
   background: #000;
   position: relative;
-  overflow: hidden;
 }
 
 .video-preview video {
