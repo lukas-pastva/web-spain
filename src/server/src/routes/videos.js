@@ -82,6 +82,17 @@ router.post('/generate/:type', async (req, res) => {
   }
 });
 
+// Get count of missing videos
+router.get('/missing-count', async (req, res) => {
+  try {
+    const count = await videoService.getMissingVideosCount();
+    res.json(count);
+  } catch (error) {
+    console.error('Error getting missing videos count:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Generate all missing videos
 router.post('/generate-all', async (req, res) => {
   try {

@@ -9,13 +9,18 @@ function DailyVideos() {
   const [queueStatus, setQueueStatus] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [missingCount, setMissingCount] = useState(0);
   const { requestConfirm, isConfirming } = useConfirmDelete();
 
   useEffect(() => {
     fetchVideos();
     fetchQueueStatus();
+    fetchMissingCount();
 
-    const interval = setInterval(fetchQueueStatus, 5000);
+    const interval = setInterval(() => {
+      fetchQueueStatus();
+      fetchMissingCount();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -38,6 +43,16 @@ function DailyVideos() {
       setQueueStatus(data);
     } catch (err) {
       console.error('Error fetching queue status:', err);
+    }
+  };
+
+  const fetchMissingCount = async () => {
+    try {
+      const response = await fetch('/api/videos/missing-count');
+      const data = await response.json();
+      setMissingCount(data.missingDaily || 0);
+    } catch (err) {
+      console.error('Error fetching missing count:', err);
     }
   };
 
@@ -114,13 +129,15 @@ function DailyVideos() {
               Processing: {queueStatus.currentJob?.type} ({queueStatus.queueLength} in queue)
             </span>
           )}
-          <button
-            className="btn"
-            onClick={generateAll}
-            disabled={generating || queueStatus?.isProcessing}
-          >
-            {generating ? 'Queueing...' : 'Generate Missing Videos'}
-          </button>
+          {missingCount > 0 && (
+            <button
+              className="btn"
+              onClick={generateAll}
+              disabled={generating || queueStatus?.isProcessing}
+            >
+              {generating ? 'Queueing...' : `Generate Missing Videos (${missingCount})`}
+            </button>
+          )}
           {videos.length > 0 && (
             <ConfirmButton
               onClick={deleteAllVideos}

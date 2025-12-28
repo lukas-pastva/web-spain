@@ -218,6 +218,29 @@ class VideoService {
     await generateCombinedVideo(videoPaths, outputPath);
   }
 
+  async getMissingVideosCount() {
+    const days = await imageService.getDays();
+    const dailyVideos = await this.getVideos('daily');
+    const daylightVideos = await this.getVideos('daylight');
+
+    const existingDaily = new Set(dailyVideos.map(v => v.date));
+    const existingDaylight = new Set(daylightVideos.map(v => v.date.replace('-daylight', '')));
+
+    let missingDaily = 0;
+    let missingDaylight = 0;
+
+    for (const day of days) {
+      if (!existingDaily.has(day)) {
+        missingDaily++;
+      }
+      if (!existingDaylight.has(day)) {
+        missingDaylight++;
+      }
+    }
+
+    return { missingDaily, missingDaylight, total: missingDaily + missingDaylight };
+  }
+
   async generateAllMissing() {
     const days = await imageService.getDays();
     const dailyVideos = await this.getVideos('daily');
