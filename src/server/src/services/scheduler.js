@@ -8,7 +8,7 @@ export function initScheduler() {
   // Generate videos for yesterday at 2 AM every day
   // This ensures all images from the previous day are captured
   schedule.scheduleJob('0 2 * * *', async () => {
-    console.log('Running scheduled video generation...');
+    console.log('Running scheduled daily video generation...');
 
     try {
       const yesterday = new Date();
@@ -22,29 +22,32 @@ export function initScheduler() {
 
       // Queue daylight video
       await videoService.queueVideoGeneration('daylight', dateStr);
-
-      // Update combined videos once a week (on Sundays)
-      if (new Date().getDay() === 0) {
-        console.log('Sunday: Regenerating combined videos...');
-        await videoService.queueVideoGeneration('combined-24h');
-        await videoService.queueVideoGeneration('combined-daylight');
-      }
     } catch (error) {
-      console.error('Error in scheduled video generation:', error);
+      console.error('Error in scheduled daily video generation:', error);
     }
   });
 
-  // Regenerate combined videos monthly (on the 1st)
-  schedule.scheduleJob('0 3 1 * *', async () => {
-    console.log('Monthly combined video regeneration...');
+  // Generate combined 24h video at 4 AM every day (staggered to avoid overload)
+  schedule.scheduleJob('0 4 * * *', async () => {
+    console.log('Running scheduled combined-24h video generation...');
 
     try {
       await videoService.queueVideoGeneration('combined-24h');
-      await videoService.queueVideoGeneration('combined-daylight');
     } catch (error) {
-      console.error('Error in monthly video generation:', error);
+      console.error('Error in combined-24h video generation:', error);
     }
   });
 
-  console.log('Scheduler initialized. Daily videos will be generated at 2 AM.');
+  // Generate combined daylight video at 5 AM every day (staggered to avoid overload)
+  schedule.scheduleJob('0 5 * * *', async () => {
+    console.log('Running scheduled combined-daylight video generation...');
+
+    try {
+      await videoService.queueVideoGeneration('combined-daylight');
+    } catch (error) {
+      console.error('Error in combined-daylight video generation:', error);
+    }
+  });
+
+  console.log('Scheduler initialized. Daily videos at 2 AM, combined-24h at 4 AM, combined-daylight at 5 AM.');
 }
