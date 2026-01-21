@@ -212,6 +212,131 @@ def draw_temperature_gauge(
     )
 
 
+def draw_temperature_difference(
+    draw: ImageDraw.Draw,
+    center: Tuple[int, int],
+    alicante_temp: float,
+    bratislava_temp: float
+) -> None:
+    """
+    Draw a graphical temperature difference indicator between Alicante and Bratislava.
+
+    Args:
+        draw: PIL ImageDraw object
+        center: (x, y) center position of the indicator
+        alicante_temp: Temperature in Alicante (Celsius)
+        bratislava_temp: Temperature in Bratislava (Celsius)
+    """
+    cx, cy = center
+    diff = alicante_temp - bratislava_temp
+
+    # Dimensions
+    box_width = 140
+    box_height = 70
+
+    # Background rounded rectangle with gradient effect (semi-transparent dark)
+    bg_left = cx - box_width // 2
+    bg_top = cy - box_height // 2
+    bg_right = cx + box_width // 2
+    bg_bottom = cy + box_height // 2
+
+    # Draw background with rounded corners
+    draw.rounded_rectangle(
+        [(bg_left, bg_top), (bg_right, bg_bottom)],
+        radius=12,
+        fill=(30, 30, 50, 200)
+    )
+
+    # Draw border
+    border_color = (255, 200, 100) if diff > 0 else (100, 200, 255) if diff < 0 else (200, 200, 200)
+    draw.rounded_rectangle(
+        [(bg_left, bg_top), (bg_right, bg_bottom)],
+        radius=12,
+        outline=border_color,
+        width=2
+    )
+
+    # Title "DIFF" at top
+    title_font = get_font(12)
+    title_text = "DIFFERENCE"
+    bbox = draw.textbbox((0, 0), title_text, font=title_font)
+    title_width = bbox[2] - bbox[0]
+    draw.text(
+        (cx - title_width // 2, bg_top + 6),
+        title_text,
+        font=title_font,
+        fill=(180, 180, 200)
+    )
+
+    # Main difference value
+    diff_font = get_font(28)
+    sign = "+" if diff > 0 else ""
+    diff_text = f"{sign}{diff:.1f}°"
+    bbox = draw.textbbox((0, 0), diff_text, font=diff_font)
+    diff_width = bbox[2] - bbox[0]
+
+    # Color based on difference (warm = orange/red, cold = blue/cyan)
+    if diff > 0:
+        # Warmer in Alicante - warm colors
+        if diff > 15:
+            diff_color = (255, 100, 50)  # Hot red-orange
+        elif diff > 8:
+            diff_color = (255, 165, 0)   # Orange
+        else:
+            diff_color = (255, 200, 100) # Light orange
+    elif diff < 0:
+        # Colder in Alicante - cool colors
+        if diff < -15:
+            diff_color = (50, 150, 255)  # Deep blue
+        elif diff < -8:
+            diff_color = (100, 200, 255) # Light blue
+        else:
+            diff_color = (150, 220, 255) # Very light blue
+    else:
+        diff_color = (200, 200, 200)     # Gray for equal
+
+    draw_text_with_shadow(
+        draw,
+        (cx - diff_width // 2, cy - 8),
+        diff_text,
+        diff_font,
+        text_color=diff_color
+    )
+
+    # Arrow indicator and label at bottom
+    arrow_font = get_font(11)
+    if diff > 0:
+        # Alicante is warmer
+        arrow = "▲"
+        label = "ALI warmer"
+    elif diff < 0:
+        # Bratislava is warmer
+        arrow = "▼"
+        label = "BRA warmer"
+    else:
+        arrow = "="
+        label = "Same temp"
+
+    # Draw arrow
+    arrow_y = bg_bottom - 18
+    bbox = draw.textbbox((0, 0), arrow, font=arrow_font)
+    arrow_width = bbox[2] - bbox[0]
+    draw.text(
+        (cx - 35 - arrow_width // 2, arrow_y),
+        arrow,
+        font=arrow_font,
+        fill=diff_color
+    )
+
+    # Draw label
+    draw.text(
+        (cx - 25, arrow_y),
+        label,
+        font=arrow_font,
+        fill=(180, 180, 200)
+    )
+
+
 def draw_date_indicator(
     draw: ImageDraw.Draw,
     width: int,
@@ -435,6 +560,17 @@ def add_overlay(
                 bratislava_weather.get('temperature', 0),
                 'Bratislava',
                 gauge_size
+            )
+
+        # Draw temperature difference indicator (bottom-center)
+        if alicante_weather and bratislava_weather:
+            alicante_temp = alicante_weather.get('temperature', 0)
+            bratislava_temp = bratislava_weather.get('temperature', 0)
+            draw_temperature_difference(
+                draw,
+                (width // 2, gauge_y),
+                alicante_temp,
+                bratislava_temp
             )
 
         # Draw date indicator at bottom
