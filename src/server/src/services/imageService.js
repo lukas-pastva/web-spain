@@ -159,6 +159,10 @@ class ImageService {
     return await db.deleteCapturesForDay(date);
   }
 
+  async deleteAllImages() {
+    return await db.deleteAllCaptures();
+  }
+
   /**
    * Get sun times for a specific date from database
    */

@@ -149,4 +149,15 @@ router.delete('/day/:date', async (req, res) => {
   }
 });
 
+// Delete ALL images from database (use with caution)
+router.delete('/all', async (req, res) => {
+  try {
+    const result = await imageService.deleteAllImages();
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting all images:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

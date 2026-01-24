@@ -377,6 +377,23 @@ export async function getSunTimesForDate(date) {
 }
 
 /**
+ * Delete all captures from database
+ */
+export async function deleteAllCaptures() {
+  const conn = await getPool().getConnection();
+  try {
+    const [result] = await conn.execute('DELETE FROM captures');
+    console.log(`Deleted all ${result.affectedRows} captures from database`);
+    return { success: true, deleted: result.affectedRows };
+  } catch (error) {
+    console.error('Error deleting all captures:', error);
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * Close database pool
  */
 export async function closePool() {
