@@ -331,6 +331,34 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }
   const diffColor = diff > 0 ? 'rgb(255,180,100)' : diff < 0 ? 'rgb(100,180,255)' : 'rgb(200,200,200)';
   const diffLabel = diff > 0 ? 'Alicante warmer' : diff < 0 ? 'Bratislava warmer' : 'Same temperature';
 
+  // Day length difference
+  const parseDayLength = (str) => {
+    if (!str || str === '--') return null;
+    const match = str.match(/(\d+)h\s*(\d+)m?/);
+    if (match) {
+      return parseInt(match[1]) * 60 + parseInt(match[2]);
+    }
+    return null;
+  };
+
+  const aliDayMins = parseDayLength(alicanteWeather?.day_length);
+  const braDayMins = parseDayLength(bratislavaWeather?.day_length);
+  let dayLengthDiff = null;
+  let dayLengthDiffStr = '--';
+  let dayLengthColor = 'rgb(200,200,200)';
+  let dayLengthLabel = '';
+
+  if (aliDayMins !== null && braDayMins !== null) {
+    dayLengthDiff = aliDayMins - braDayMins;
+    const absDiff = Math.abs(dayLengthDiff);
+    const diffHours = Math.floor(absDiff / 60);
+    const diffMins = absDiff % 60;
+    const sign = dayLengthDiff > 0 ? '+' : '-';
+    dayLengthDiffStr = diffHours > 0 ? `${sign}${diffHours}h ${diffMins}m` : `${sign}${diffMins}m`;
+    dayLengthColor = dayLengthDiff > 0 ? 'rgb(255,220,100)' : dayLengthDiff < 0 ? 'rgb(180,140,255)' : 'rgb(200,200,200)';
+    dayLengthLabel = dayLengthDiff > 0 ? 'Longer in Alicante' : dayLengthDiff < 0 ? 'Longer in Bratislava' : 'Same length';
+  }
+
   // Date indicator positioning in bottom panel
   const dateY = imageHeight + 180;
   const trackMargin = 100;
@@ -399,20 +427,26 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }
       <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="2" fill="rgba(255,255,255,0.1)" />
 
       <!-- Temperature difference (bottom left area) -->
-      <rect x="30" y="${imageHeight + 20}" width="240" height="130" rx="12" fill="rgba(0,0,0,0.2)" />
-      <text x="150" y="${imageHeight + 50}" fill="rgba(255,255,255,0.7)" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">TEMPERATURE DIFFERENCE</text>
-      <text x="150" y="${imageHeight + 100}" fill="${diffColor}" font-size="44" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°C</text>
-      <text x="150" y="${imageHeight + 130}" fill="rgba(255,255,255,0.6)" font-size="13" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
+      <rect x="20" y="${imageHeight + 20}" width="200" height="130" rx="12" fill="rgba(0,0,0,0.2)" />
+      <text x="120" y="${imageHeight + 48}" fill="rgba(255,255,255,0.7)" font-size="12" text-anchor="middle" font-family="Arial, sans-serif">TEMPERATURE</text>
+      <text x="120" y="${imageHeight + 95}" fill="${diffColor}" font-size="38" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°C</text>
+      <text x="120" y="${imageHeight + 125}" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
+
+      <!-- Day length difference (next to temperature) -->
+      <rect x="230" y="${imageHeight + 20}" width="200" height="130" rx="12" fill="rgba(0,0,0,0.2)" />
+      <text x="330" y="${imageHeight + 48}" fill="rgba(255,255,255,0.7)" font-size="12" text-anchor="middle" font-family="Arial, sans-serif">DAY LENGTH</text>
+      <text x="330" y="${imageHeight + 95}" fill="${dayLengthColor}" font-size="38" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthDiffStr}</text>
+      <text x="330" y="${imageHeight + 125}" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthLabel}</text>
 
       <!-- Month labels -->
       ${months.map((m, i) => {
-        const monthX = 380 + i * 170;
+        const monthX = 500 + i * 140;
         return `
           <text
             x="${monthX}"
             y="${imageHeight + 55}"
             fill="${m.isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.35)'}"
-            font-size="${m.isActive ? 18 : 14}"
+            font-size="${m.isActive ? 16 : 13}"
             font-weight="${m.isActive ? '600' : '400'}"
             text-anchor="middle"
             font-family="Arial, sans-serif"
