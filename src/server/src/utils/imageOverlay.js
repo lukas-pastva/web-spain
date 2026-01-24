@@ -342,61 +342,77 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }
   return `
     <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
       <defs>
+        <!-- Ocean/beach gradient background -->
         <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:rgb(20,25,40)" />
-          <stop offset="100%" style="stop-color:rgb(10,15,25)" />
+          <stop offset="0%" style="stop-color:rgb(15,52,96)" />
+          <stop offset="40%" style="stop-color:rgb(22,78,99)" />
+          <stop offset="70%" style="stop-color:rgb(14,116,144)" />
+          <stop offset="100%" style="stop-color:rgb(6,95,124)" />
         </linearGradient>
+        <!-- Warm sunset accent for panels -->
+        <linearGradient id="panelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:rgba(255,183,77,0.1)" />
+          <stop offset="100%" style="stop-color:rgba(20,80,100,0.3)" />
+        </linearGradient>
+        <!-- Track gradient - ocean teal -->
         <linearGradient id="trackGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" style="stop-color:rgb(102,126,234)" />
-          <stop offset="50%" style="stop-color:rgb(118,75,162)" />
-          <stop offset="100%" style="stop-color:rgb(102,126,234)" />
+          <stop offset="0%" style="stop-color:rgb(34,211,238)" />
+          <stop offset="50%" style="stop-color:rgb(56,189,248)" />
+          <stop offset="100%" style="stop-color:rgb(34,211,238)" />
         </linearGradient>
+        <!-- Label gradient - warm sand/sunset -->
         <linearGradient id="labelGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" style="stop-color:rgb(102,126,234)" />
-          <stop offset="100%" style="stop-color:rgb(118,75,162)" />
+          <stop offset="0%" style="stop-color:rgb(251,146,60)" />
+          <stop offset="100%" style="stop-color:rgb(245,158,11)" />
         </linearGradient>
+        <!-- Wave pattern -->
+        <pattern id="waves" x="0" y="0" width="100" height="20" patternUnits="userSpaceOnUse">
+          <path d="M0 10 Q25 0 50 10 T100 10" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="2"/>
+        </pattern>
       </defs>
 
       <!-- Background -->
       <rect width="${canvasWidth}" height="${canvasHeight}" fill="url(#bgGrad)" />
+      <!-- Subtle wave pattern overlay -->
+      <rect width="${canvasWidth}" height="${canvasHeight}" fill="url(#waves)" />
 
       <!-- Image border/frame -->
       <rect x="0" y="0" width="${imageWidth}" height="${imageHeight}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2" />
 
-      <!-- Right side panel - Alicante (top half) -->
-      <rect x="${imageWidth}" y="0" width="${sidePanelWidth}" height="${imageHeight / 2}" fill="rgba(255,255,255,0.03)" />
+      <!-- Right side panel - Alicante (top half) - warm tones for Spanish sun -->
+      <rect x="${imageWidth}" y="0" width="${sidePanelWidth}" height="${imageHeight / 2}" fill="rgba(251,146,60,0.08)" />
+      <rect x="${imageWidth}" y="${imageHeight / 2 - 1}" width="${sidePanelWidth}" height="2" fill="rgba(255,255,255,0.1)" />
       ${generateCityPanelSVG(
         alicanteWeather ? { ...alicanteWeather, city: 'Alicante' } : null,
         imageWidth, 10, sidePanelWidth, imageHeight / 2 - 20
       )}
 
-      <!-- Right side panel - Bratislava (bottom half) -->
-      <rect x="${imageWidth}" y="${imageHeight / 2}" width="${sidePanelWidth}" height="${imageHeight / 2}" fill="rgba(255,255,255,0.05)" />
+      <!-- Right side panel - Bratislava (bottom half) - cooler tones -->
+      <rect x="${imageWidth}" y="${imageHeight / 2}" width="${sidePanelWidth}" height="${imageHeight / 2}" fill="rgba(56,189,248,0.08)" />
       ${generateCityPanelSVG(
         bratislavaWeather ? { ...bratislavaWeather, city: 'Bratislava' } : null,
         imageWidth, imageHeight / 2 + 10, sidePanelWidth, imageHeight / 2 - 20
       )}
 
-      <!-- Bottom panel -->
-      <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="${bottomPanelHeight}" fill="rgba(255,255,255,0.02)" />
+      <!-- Bottom panel - sandy gradient -->
+      <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="${bottomPanelHeight}" fill="rgba(245,208,160,0.05)" />
+      <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="2" fill="rgba(255,255,255,0.1)" />
 
       <!-- Temperature difference (bottom left area) -->
-      <text x="150" y="${imageHeight + 50}" fill="rgba(255,255,255,0.6)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">TEMPERATURE DIFFERENCE</text>
-      <text x="150" y="${imageHeight + 95}" fill="${diffColor}" font-size="42" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°C</text>
-      <text x="150" y="${imageHeight + 125}" fill="rgba(255,255,255,0.7)" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
-
-      <!-- Date indicator section -->
-      <text x="${canvasWidth / 2 + 100}" y="${imageHeight + 40}" fill="rgba(255,255,255,0.6)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">DATE</text>
+      <rect x="30" y="${imageHeight + 20}" width="240" height="130" rx="12" fill="rgba(0,0,0,0.2)" />
+      <text x="150" y="${imageHeight + 50}" fill="rgba(255,255,255,0.7)" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">TEMPERATURE DIFFERENCE</text>
+      <text x="150" y="${imageHeight + 100}" fill="${diffColor}" font-size="44" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°C</text>
+      <text x="150" y="${imageHeight + 130}" fill="rgba(255,255,255,0.6)" font-size="13" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
 
       <!-- Month labels -->
       ${months.map((m, i) => {
-        const monthX = 350 + i * 180;
+        const monthX = 380 + i * 170;
         return `
           <text
             x="${monthX}"
-            y="${imageHeight + 80}"
-            fill="${m.isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.4)'}"
-            font-size="${m.isActive ? 20 : 16}"
+            y="${imageHeight + 55}"
+            fill="${m.isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.35)'}"
+            font-size="${m.isActive ? 18 : 14}"
             font-weight="${m.isActive ? '600' : '400'}"
             text-anchor="middle"
             font-family="Arial, sans-serif"
@@ -404,18 +420,21 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }
         `;
       }).join('')}
 
-      <!-- Track bar -->
-      <rect x="${trackMargin}" y="${dateY}" width="${trackWidth}" height="${trackHeight}" fill="url(#trackGrad)" rx="${trackHeight / 2}" />
+      <!-- Track bar with glow effect -->
+      <rect x="${trackMargin}" y="${dateY}" width="${trackWidth}" height="${trackHeight}" fill="rgba(0,0,0,0.3)" rx="${trackHeight / 2}" />
+      <rect x="${trackMargin}" y="${dateY}" width="${trackWidth}" height="${trackHeight}" fill="url(#trackGrad)" rx="${trackHeight / 2}" opacity="0.9" />
 
-      <!-- Day marker -->
-      <rect x="${markerX - 2}" y="${dateY - (markerHeight - trackHeight) / 2}" width="4" height="${markerHeight}" fill="white" rx="2" />
+      <!-- Day marker with glow -->
+      <rect x="${markerX - 3}" y="${dateY - (markerHeight - trackHeight) / 2}" width="6" height="${markerHeight}" fill="rgba(255,255,255,0.3)" rx="3" />
+      <rect x="${markerX - 2}" y="${dateY - (markerHeight - trackHeight) / 2 + 2}" width="4" height="${markerHeight - 4}" fill="white" rx="2" />
 
-      <!-- Day label -->
-      <rect x="${markerX - 22}" y="${dateY - markerHeight / 2 - 35}" width="44" height="28" fill="url(#labelGrad)" rx="6" />
-      <text x="${markerX}" y="${dateY - markerHeight / 2 - 15}" fill="white" font-size="18" font-weight="700" text-anchor="middle" font-family="Arial, sans-serif">${day}</text>
+      <!-- Day label badge -->
+      <rect x="${markerX - 24}" y="${dateY - markerHeight / 2 - 38}" width="48" height="30" fill="url(#labelGrad)" rx="8" />
+      <text x="${markerX}" y="${dateY - markerHeight / 2 - 16}" fill="white" font-size="18" font-weight="700" text-anchor="middle" font-family="Arial, sans-serif">${day}</text>
 
-      <!-- Current date display -->
-      <text x="${canvasWidth - 100}" y="${imageHeight + 80}" fill="rgba(255,255,255,0.8)" font-size="24" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${date}</text>
+      <!-- Current date display (right side) -->
+      <rect x="${canvasWidth - 180}" y="${imageHeight + 30}" width="150" height="50" rx="10" fill="rgba(0,0,0,0.25)" />
+      <text x="${canvasWidth - 105}" y="${imageHeight + 63}" fill="rgba(255,255,255,0.9)" font-size="22" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${date}</text>
     </svg>
   `;
 }
