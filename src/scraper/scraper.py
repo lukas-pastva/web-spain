@@ -22,7 +22,6 @@ from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image
 
 from weather import get_all_weather
-from overlay import add_overlay_to_image
 from database import init_database, save_capture
 
 
@@ -639,10 +638,11 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
 
 def process_screenshot(raw_path: str) -> int:
     """
-    Add weather overlay to screenshot and save to database.
+    Process screenshot (crop/resize) and save to database WITHOUT overlay.
+    Weather metadata is still fetched and stored for later overlay application.
     Returns the capture ID.
     """
-    # Get weather data
+    # Get weather data (still needed for metadata storage)
     print("Fetching weather data...")
     weather = get_all_weather()
 
@@ -654,29 +654,58 @@ def process_screenshot(raw_path: str) -> int:
     if bratislava:
         print(f"Bratislava: {bratislava['temperature']}°C, sunrise {bratislava['sunrise']}, sunset {bratislava['sunset']}")
 
-    display_time = datetime.now().strftime('%H:%M:%S')
+    # Process image (crop and resize) WITHOUT overlay
+    print("Processing image (no overlay)...")
+    try:
+        image = Image.open(raw_path)
 
-    # Add overlay and get image object
-    print("Adding weather overlay...")
-    result = add_overlay_to_image(raw_path, alicante, bratislava, display_time)
+        # Convert to RGB if necessary
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
 
-    if result is None:
-        print("Failed to add overlay")
-        # Clean up temp file
+        # Crop based on environment variables (percentages 0-100)
+        img_width, img_height = image.size
+
+        x1 = float(os.environ.get('CROP_X1', '0')) / 100
+        y1 = float(os.environ.get('CROP_Y1', '0')) / 100
+        x2 = float(os.environ.get('CROP_X2', '100')) / 100
+        y2 = float(os.environ.get('CROP_Y2', '100')) / 100
+
+        left = int(img_width * x1)
+        top = int(img_height * y1)
+        right = int(img_width * x2)
+        bottom = int(img_height * y2)
+
+        # Clamp to image bounds
+        left = max(0, left)
+        top = max(0, top)
+        right = min(right, img_width)
+        bottom = min(bottom, img_height)
+
+        if right > left and bottom > top:
+            image = image.crop((left, top, right, bottom))
+
+        # Resize to target dimensions
+        target_width = int(os.environ.get('OUTPUT_WIDTH', '800'))
+        target_height = int(os.environ.get('OUTPUT_HEIGHT', '450'))
+        image = image.resize((target_width, target_height), Image.LANCZOS)
+
+        width, height = image.size
+
+    except Exception as e:
+        print(f"Failed to process image: {e}")
         try:
             os.remove(raw_path)
         except:
             pass
         return None
 
-    image, width, height = result
-
     # Convert image to JPEG bytes
     img_buffer = io.BytesIO()
     image.save(img_buffer, 'JPEG', quality=90)
     image_data = img_buffer.getvalue()
 
-    # Save to database
+    # Save to database (clean image, weather metadata stored separately)
     print("Saving capture to database...")
     capture_id = save_capture(
         image_data=image_data,

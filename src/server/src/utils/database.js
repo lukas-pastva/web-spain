@@ -106,8 +106,9 @@ export async function getCapturesForDay(date) {
       id: row.id,
       filename: `${row.id}.jpg`,
       time: row.capture_time.toString().substring(0, 5).replace(/:/g, ':'),
-      url: `/api/images/data/${row.id}`,
-      date: row.capture_date,
+      url: `/api/images/data/${row.id}/overlay`,
+      rawUrl: `/api/images/data/${row.id}`,
+      date: row.capture_date instanceof Date ? row.capture_date.toISOString().split('T')[0] : row.capture_date,
       width: row.width,
       height: row.height,
       weather: {
@@ -155,8 +156,9 @@ export async function getLatestCapture() {
       id: row.id,
       filename: `${row.id}.jpg`,
       time: row.capture_time.toString().substring(0, 5),
-      url: `/api/images/data/${row.id}`,
-      date: row.capture_date,
+      url: `/api/images/data/${row.id}/overlay`,
+      rawUrl: `/api/images/data/${row.id}`,
+      date: row.capture_date instanceof Date ? row.capture_date.toISOString().split('T')[0] : row.capture_date,
       width: row.width,
       height: row.height
     };
@@ -187,6 +189,54 @@ export async function getImageData(captureId) {
     };
   } catch (error) {
     console.error('Error getting image data:', error);
+    return null;
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * Get full capture data including image and weather metadata (for overlay)
+ */
+export async function getFullCaptureData(captureId) {
+  const conn = await getPool().getConnection();
+  try {
+    const [rows] = await conn.execute(`
+      SELECT id, capture_date, capture_time, image_data, image_format, width, height,
+             alicante_temp, alicante_sunrise, alicante_sunset, alicante_day_length,
+             bratislava_temp, bratislava_sunrise, bratislava_sunset, bratislava_day_length
+      FROM captures
+      WHERE id = ?
+    `, [captureId]);
+
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      date: row.capture_date instanceof Date ? row.capture_date.toISOString().split('T')[0] : row.capture_date,
+      time: row.capture_time?.toString().substring(0, 5) || '',
+      imageData: row.image_data,
+      format: row.image_format || 'jpeg',
+      width: row.width,
+      height: row.height,
+      weather: {
+        alicante: {
+          temp: row.alicante_temp,
+          sunrise: row.alicante_sunrise,
+          sunset: row.alicante_sunset,
+          day_length: row.alicante_day_length
+        },
+        bratislava: {
+          temp: row.bratislava_temp,
+          sunrise: row.bratislava_sunrise,
+          sunset: row.bratislava_sunset,
+          day_length: row.bratislava_day_length
+        }
+      }
+    };
+  } catch (error) {
+    console.error('Error getting full capture data:', error);
     return null;
   } finally {
     conn.release();

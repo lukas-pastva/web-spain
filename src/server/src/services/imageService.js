@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import * as db from '../utils/database.js';
+import { applyOverlayToBuffer } from '../utils/imageOverlay.js';
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/data';
 
@@ -37,9 +38,13 @@ class ImageService {
     return await db.getImageData(captureId);
   }
 
+  async getFullCaptureData(captureId) {
+    return await db.getFullCaptureData(captureId);
+  }
+
   /**
    * Get image paths for video generation.
-   * Extracts images from database to temp files and returns paths.
+   * Extracts images from database, applies overlay, and writes to temp files.
    */
   async getImagePaths(date) {
     await this.ensureTempDirectory();
@@ -51,11 +56,25 @@ class ImageService {
 
     const paths = [];
     for (const capture of captures) {
-      const imageResult = await db.getImageData(capture.id);
-      if (imageResult && imageResult.data) {
-        const filePath = path.join(tempDir, `${capture.id}.jpg`);
-        await fs.writeFile(filePath, imageResult.data);
-        paths.push(filePath);
+      const captureData = await db.getFullCaptureData(capture.id);
+      if (captureData && captureData.imageData) {
+        try {
+          // Apply overlay to image before writing
+          const overlayedImage = await applyOverlayToBuffer(
+            captureData.imageData,
+            captureData.weather,
+            captureData.date
+          );
+          const filePath = path.join(tempDir, `${capture.id}.jpg`);
+          await fs.writeFile(filePath, overlayedImage);
+          paths.push(filePath);
+        } catch (error) {
+          console.error(`Error applying overlay to capture ${capture.id}:`, error);
+          // Fallback: write raw image without overlay
+          const filePath = path.join(tempDir, `${capture.id}.jpg`);
+          await fs.writeFile(filePath, captureData.imageData);
+          paths.push(filePath);
+        }
       }
     }
 
@@ -64,7 +83,7 @@ class ImageService {
 
   /**
    * Get daylight image paths for video generation.
-   * Extracts images from database to temp files and returns paths.
+   * Extracts images from database, applies overlay, and writes to temp files.
    */
   async getDaylightImagePaths(date, sunriseTime, sunsetTime) {
     await this.ensureTempDirectory();
@@ -76,11 +95,25 @@ class ImageService {
 
     const paths = [];
     for (const capture of captures) {
-      const imageResult = await db.getImageData(capture.id);
-      if (imageResult && imageResult.data) {
-        const filePath = path.join(tempDir, `${capture.id}.jpg`);
-        await fs.writeFile(filePath, imageResult.data);
-        paths.push(filePath);
+      const captureData = await db.getFullCaptureData(capture.id);
+      if (captureData && captureData.imageData) {
+        try {
+          // Apply overlay to image before writing
+          const overlayedImage = await applyOverlayToBuffer(
+            captureData.imageData,
+            captureData.weather,
+            captureData.date
+          );
+          const filePath = path.join(tempDir, `${capture.id}.jpg`);
+          await fs.writeFile(filePath, overlayedImage);
+          paths.push(filePath);
+        } catch (error) {
+          console.error(`Error applying overlay to capture ${capture.id}:`, error);
+          // Fallback: write raw image without overlay
+          const filePath = path.join(tempDir, `${capture.id}.jpg`);
+          await fs.writeFile(filePath, captureData.imageData);
+          paths.push(filePath);
+        }
       }
     }
 

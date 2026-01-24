@@ -1,9 +1,10 @@
 import express from 'express';
 import { imageService } from '../services/imageService.js';
+import { applyOverlayToBuffer } from '../utils/imageOverlay.js';
 
 const router = express.Router();
 
-// Serve image data from database
+// Serve raw image data from database (no overlay)
 router.get('/data/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -23,6 +24,36 @@ router.get('/data/:id', async (req, res) => {
     res.send(imageResult.data);
   } catch (error) {
     console.error('Error getting image data:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Serve image with overlay applied
+router.get('/data/:id/overlay', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const captureId = parseInt(id, 10);
+    if (isNaN(captureId)) {
+      return res.status(400).json({ error: 'Invalid capture ID' });
+    }
+
+    const captureData = await imageService.getFullCaptureData(captureId);
+    if (!captureData || !captureData.imageData) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    // Apply overlay to image
+    const overlayedImage = await applyOverlayToBuffer(
+      captureData.imageData,
+      captureData.weather,
+      captureData.date
+    );
+
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    res.send(overlayedImage);
+  } catch (error) {
+    console.error('Error getting image with overlay:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
