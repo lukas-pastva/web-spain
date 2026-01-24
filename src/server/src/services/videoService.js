@@ -27,7 +27,12 @@ class VideoService {
     // Get sunrise/sunset times for daylight videos
     let sunTimes = null;
     if (type === 'daylight') {
-      sunTimes = await this.getSunTimes();
+      const days = await imageService.getDays();
+      if (days.length > 0) {
+        sunTimes = await imageService.getSunTimesForDate(days[0]);
+      } else {
+        sunTimes = { sunrise: '06:00', sunset: '20:00' };
+      }
     }
 
     try {
@@ -63,17 +68,10 @@ class VideoService {
   }
 
   async getSunTimes() {
-    const metadataPath = path.join(OUTPUT_DIR, 'metadata', 'weather_cache.json');
-    try {
-      const cache = JSON.parse(await fs.readFile(metadataPath, 'utf-8'));
-      if (cache.alicante?.data) {
-        return {
-          sunrise: cache.alicante.data.sunrise || '06:00',
-          sunset: cache.alicante.data.sunset || '20:00'
-        };
-      }
-    } catch (error) {
-      // Ignore errors
+    // Get sun times from the most recent date in database
+    const days = await imageService.getDays();
+    if (days.length > 0) {
+      return await imageService.getSunTimesForDate(days[0]);
     }
     return { sunrise: '06:00', sunset: '20:00' };
   }
@@ -158,25 +156,20 @@ class VideoService {
       return;
     }
 
-    const outputPath = path.join(this.videosPath, 'daily', `${date}.mp4`);
-    await generateDailyVideo(imagePaths, outputPath);
+    try {
+      const outputPath = path.join(this.videosPath, 'daily', `${date}.mp4`);
+      await generateDailyVideo(imagePaths, outputPath);
+    } finally {
+      // Clean up temporary image files
+      await imageService.cleanupTempImages(imagePaths);
+    }
   }
 
   async generateDaylightVideo(date) {
-    // Get sunrise/sunset times from weather cache
-    const metadataPath = path.join(OUTPUT_DIR, 'metadata', 'weather_cache.json');
-    let sunriseTime = '06:00';
-    let sunsetTime = '20:00';
-
-    try {
-      const cache = JSON.parse(await fs.readFile(metadataPath, 'utf-8'));
-      if (cache.alicante?.data) {
-        sunriseTime = cache.alicante.data.sunrise || sunriseTime;
-        sunsetTime = cache.alicante.data.sunset || sunsetTime;
-      }
-    } catch (error) {
-      console.log('Using default sunrise/sunset times');
-    }
+    // Get sunrise/sunset times from database
+    const sunTimes = await imageService.getSunTimesForDate(date);
+    const sunriseTime = sunTimes.sunrise || '06:00';
+    const sunsetTime = sunTimes.sunset || '20:00';
 
     const imagePaths = await imageService.getDaylightImagePaths(date, sunriseTime, sunsetTime);
     if (imagePaths.length === 0) {
@@ -184,8 +177,13 @@ class VideoService {
       return;
     }
 
-    const outputPath = path.join(this.videosPath, 'daylight', `${date}-daylight.mp4`);
-    await generateDailyVideo(imagePaths, outputPath);
+    try {
+      const outputPath = path.join(this.videosPath, 'daylight', `${date}-daylight.mp4`);
+      await generateDailyVideo(imagePaths, outputPath);
+    } finally {
+      // Clean up temporary image files
+      await imageService.cleanupTempImages(imagePaths);
+    }
   }
 
   async generateCombined24hVideo() {

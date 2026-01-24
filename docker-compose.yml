@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: web-spain-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-rootpassword}
+      - MYSQL_DATABASE=${DB_NAME:-webspain}
+      - MYSQL_USER=${DB_USER:-webspain}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-webspainpassword}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   web-spain:
     build:
       context: ./src
@@ -16,9 +34,19 @@ services:
       - PORT=3000
       - OUTPUT_DIR=/data
       - TARGET_URL=${TARGET_URL:-https://www.algarapictures.com/webcam}
+      - DB_HOST=mariadb
+      - DB_NAME=${DB_NAME:-webspain}
+      - DB_USER=${DB_USER:-webspain}
+      - DB_PASSWORD=${DB_PASSWORD:-webspainpassword}
+    depends_on:
+      mariadb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+volumes:
+  mariadb_data:

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import imagesRouter from './routes/images.js';
 import videosRouter from './routes/videos.js';
 import { initScheduler } from './services/scheduler.js';
+import { initDatabase } from './utils/database.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,8 +21,7 @@ app.use(express.json());
 app.use('/api/images', imagesRouter);
 app.use('/api/videos', videosRouter);
 
-// Serve static files from storage
-app.use('/storage/images', express.static(path.join(OUTPUT_DIR, 'images')));
+// Serve static video files from storage (images are served from database via API)
 app.use('/storage/videos', express.static(path.join(OUTPUT_DIR, 'videos')));
 
 // Serve React frontend in production
@@ -40,10 +40,24 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Initialize video generation scheduler
-initScheduler();
+// Initialize database and start server
+async function start() {
+  try {
+    console.log('Initializing database...');
+    await initDatabase();
+    console.log('Database initialized');
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Output directory: ${OUTPUT_DIR}`);
-});
+    // Initialize video generation scheduler
+    initScheduler();
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Output directory: ${OUTPUT_DIR}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+start();

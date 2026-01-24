@@ -460,7 +460,7 @@ def add_overlay(
     capture_time: Optional[str] = None
 ) -> bool:
     """
-    Add weather overlay to an image.
+    Add weather overlay to an image and save to file.
 
     Args:
         image_path: Path to the input image
@@ -471,6 +471,39 @@ def add_overlay(
 
     Returns:
         True if successful, False otherwise
+    """
+    try:
+        result = add_overlay_to_image(image_path, alicante_weather, bratislava_weather, capture_time)
+        if result is None:
+            return False
+
+        image, _, _ = result
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        image.save(output_path, 'JPEG', quality=90)
+        return True
+
+    except Exception as e:
+        print(f"Error adding overlay: {e}")
+        return False
+
+
+def add_overlay_to_image(
+    image_path: str,
+    alicante_weather: Optional[Dict],
+    bratislava_weather: Optional[Dict],
+    capture_time: Optional[str] = None
+) -> Optional[Tuple[Image.Image, int, int]]:
+    """
+    Add weather overlay to an image and return the PIL Image object.
+
+    Args:
+        image_path: Path to the input image
+        alicante_weather: Weather data for Alicante
+        bratislava_weather: Weather data for Bratislava
+        capture_time: Timestamp string to display (e.g., "14:30:45")
+
+    Returns:
+        Tuple of (PIL Image, width, height) if successful, None otherwise
     """
     try:
         # Open image
@@ -577,15 +610,11 @@ def add_overlay(
         current_date = datetime.now()
         draw_date_indicator(draw, width, height, current_date)
 
-        # Save image
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        image.save(output_path, 'JPEG', quality=90)
-
-        return True
+        return (image, width, height)
 
     except Exception as e:
         print(f"Error adding overlay: {e}")
-        return False
+        return None
 
 
 if __name__ == '__main__':

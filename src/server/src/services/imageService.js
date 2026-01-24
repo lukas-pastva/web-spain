@@ -1,158 +1,136 @@
 import fs from 'fs/promises';
 import path from 'path';
+import * as db from '../utils/database.js';
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/data';
 
 class ImageService {
   constructor() {
-    this.imagesPath = path.join(OUTPUT_DIR, 'images');
+    this.tempPath = path.join(OUTPUT_DIR, 'temp');
   }
 
-  async ensureDirectory() {
+  async ensureTempDirectory() {
     try {
-      await fs.mkdir(this.imagesPath, { recursive: true });
+      await fs.mkdir(this.tempPath, { recursive: true });
     } catch (error) {
       // Directory might already exist
     }
   }
 
   async getDays() {
-    await this.ensureDirectory();
-    try {
-      const entries = await fs.readdir(this.imagesPath, { withFileTypes: true });
-      const days = entries
-        .filter(entry => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
-        .map(entry => entry.name)
-        .sort()
-        .reverse(); // Most recent first
-      return days;
-    } catch (error) {
-      console.error('Error reading days:', error);
-      return [];
-    }
+    return await db.getDays();
   }
 
   async getImagesForDay(date) {
-    const dayPath = path.join(this.imagesPath, date);
-    try {
-      const files = await fs.readdir(dayPath);
-      const images = files
-        .filter(file => /\.(jpg|jpeg|png)$/i.test(file))
-        .sort()
-        .map(file => ({
-          filename: file,
-          time: file.replace(/\.(jpg|jpeg|png)$/i, '').replace(/-/g, ':'),
-          url: `/storage/images/${date}/${file}`
-        }));
-      return images;
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        return [];
-      }
-      throw error;
-    }
+    return await db.getCapturesForDay(date);
   }
 
   async getLatestImage() {
-    const days = await this.getDays();
-    if (days.length === 0) return null;
-
-    // Try each day until we find one with images
-    for (const day of days) {
-      const images = await this.getImagesForDay(day);
-      if (images.length > 0) {
-        const latest = images[images.length - 1];
-        return {
-          ...latest,
-          date: day
-        };
-      }
-    }
-    return null;
+    return await db.getLatestCapture();
   }
 
   async getImageCounts() {
-    const days = await this.getDays();
-    const counts = {};
+    return await db.getImageCounts();
+  }
 
-    for (const day of days) {
-      const images = await this.getImagesForDay(day);
-      counts[day] = images.length;
+  async getImageData(captureId) {
+    return await db.getImageData(captureId);
+  }
+
+  /**
+   * Get image paths for video generation.
+   * Extracts images from database to temp files and returns paths.
+   */
+  async getImagePaths(date) {
+    await this.ensureTempDirectory();
+    const captures = await db.getCaptureIdsForDay(date);
+    if (captures.length === 0) return [];
+
+    const tempDir = path.join(this.tempPath, `video-${date}-${Date.now()}`);
+    await fs.mkdir(tempDir, { recursive: true });
+
+    const paths = [];
+    for (const capture of captures) {
+      const imageResult = await db.getImageData(capture.id);
+      if (imageResult && imageResult.data) {
+        const filePath = path.join(tempDir, `${capture.id}.jpg`);
+        await fs.writeFile(filePath, imageResult.data);
+        paths.push(filePath);
+      }
     }
 
-    return counts;
+    return paths;
   }
 
-  async getImagePaths(date) {
-    const images = await this.getImagesForDay(date);
-    return images.map(img => path.join(this.imagesPath, date, img.filename));
-  }
-
+  /**
+   * Get daylight image paths for video generation.
+   * Extracts images from database to temp files and returns paths.
+   */
   async getDaylightImagePaths(date, sunriseTime, sunsetTime) {
-    const images = await this.getImagesForDay(date);
+    await this.ensureTempDirectory();
+    const captures = await db.getDaylightCaptureIdsForDay(date, sunriseTime, sunsetTime);
+    if (captures.length === 0) return [];
 
-    // Filter images between sunrise and sunset
-    const daylightImages = images.filter(img => {
-      const time = img.time;
-      return time >= sunriseTime && time <= sunsetTime;
-    });
+    const tempDir = path.join(this.tempPath, `daylight-${date}-${Date.now()}`);
+    await fs.mkdir(tempDir, { recursive: true });
 
-    return daylightImages.map(img => path.join(this.imagesPath, date, img.filename));
+    const paths = [];
+    for (const capture of captures) {
+      const imageResult = await db.getImageData(capture.id);
+      if (imageResult && imageResult.data) {
+        const filePath = path.join(tempDir, `${capture.id}.jpg`);
+        await fs.writeFile(filePath, imageResult.data);
+        paths.push(filePath);
+      }
+    }
+
+    return paths;
+  }
+
+  /**
+   * Clean up temporary image files after video generation
+   */
+  async cleanupTempImages(imagePaths) {
+    if (!imagePaths || imagePaths.length === 0) return;
+
+    // Get the temp directory from the first path
+    const tempDir = path.dirname(imagePaths[0]);
+    if (!tempDir.includes('temp')) return; // Safety check
+
+    try {
+      // Delete all files
+      for (const filePath of imagePaths) {
+        try {
+          await fs.unlink(filePath);
+        } catch (e) {
+          // Ignore individual file errors
+        }
+      }
+      // Remove the temp directory
+      await fs.rmdir(tempDir);
+    } catch (error) {
+      console.error('Error cleaning up temp images:', error);
+    }
   }
 
   async deleteImage(date, filename) {
-    const filePath = path.join(this.imagesPath, date, filename);
-    try {
-      await fs.unlink(filePath);
-      console.log(`Deleted image: ${filePath}`);
-
-      // Check if day folder is now empty and remove it
-      const dayPath = path.join(this.imagesPath, date);
-      const remaining = await fs.readdir(dayPath);
-      const imageFiles = remaining.filter(f => /\.(jpg|jpeg|png)$/i.test(f));
-      if (imageFiles.length === 0) {
-        await fs.rmdir(dayPath);
-        console.log(`Removed empty day folder: ${dayPath}`);
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error(`Error deleting image ${filePath}:`, error);
-      throw error;
+    // Extract capture ID from filename (assuming format: id.jpg)
+    const captureId = parseInt(filename.replace('.jpg', ''), 10);
+    if (isNaN(captureId)) {
+      throw new Error('Invalid filename format');
     }
+    return await db.deleteCapture(captureId);
   }
 
   async deleteAllImagesForDay(date) {
-    const dayPath = path.join(this.imagesPath, date);
-    try {
-      const files = await fs.readdir(dayPath);
-      const imageFiles = files.filter(f => /\.(jpg|jpeg|png)$/i.test(f));
+    return await db.deleteCapturesForDay(date);
+  }
 
-      let deleted = 0;
-      for (const file of imageFiles) {
-        try {
-          await fs.unlink(path.join(dayPath, file));
-          deleted++;
-        } catch (err) {
-          console.error(`Failed to delete ${file}:`, err);
-        }
-      }
-
-      // Check if folder is now empty and remove it
-      const remaining = await fs.readdir(dayPath);
-      if (remaining.length === 0) {
-        await fs.rmdir(dayPath);
-        console.log(`Removed empty day folder: ${dayPath}`);
-      }
-
-      console.log(`Deleted ${deleted} images for ${date}`);
-      return { success: true, deleted };
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        return { success: false, error: 'Day folder not found' };
-      }
-      throw error;
-    }
+  /**
+   * Get sun times for a specific date from database
+   */
+  async getSunTimesForDate(date) {
+    return await db.getSunTimesForDate(date);
   }
 }
 

@@ -2,12 +2,14 @@
 """
 Webcam Scraper
 Captures screenshots from Algarapictures webcam with weather overlay
+Stores captures in MariaDB database
 """
 import os
 import sys
 import time
 import random
 import signal
+import io
 from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -17,9 +19,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
+from PIL import Image
 
 from weather import get_all_weather
-from overlay import add_overlay
+from overlay import add_overlay_to_image
+from database import init_database, save_capture
 
 
 # Configuration
@@ -633,10 +637,10 @@ def capture_screenshot(driver: webdriver.Chrome) -> str:
         return temp_path
 
 
-def process_screenshot(raw_path: str) -> str:
+def process_screenshot(raw_path: str) -> int:
     """
-    Add weather overlay to screenshot and save to final location.
-    Returns the final path.
+    Add weather overlay to screenshot and save to database.
+    Returns the capture ID.
     """
     # Get weather data
     print("Fetching weather data...")
@@ -650,26 +654,50 @@ def process_screenshot(raw_path: str) -> str:
     if bratislava:
         print(f"Bratislava: {bratislava['temperature']}°C, sunrise {bratislava['sunrise']}, sunset {bratislava['sunset']}")
 
-    # Generate output path
-    timestamp = datetime.now().strftime('%H-%M-%S')
     display_time = datetime.now().strftime('%H:%M:%S')
-    output_path = os.path.join(get_screenshot_dir(), f'{timestamp}.jpg')
 
-    # Add overlay
+    # Add overlay and get image object
     print("Adding weather overlay...")
-    success = add_overlay(raw_path, output_path, alicante, bratislava, display_time)
+    result = add_overlay_to_image(raw_path, alicante, bratislava, display_time)
 
-    if success:
-        print(f"Final screenshot saved to: {output_path}")
+    if result is None:
+        print("Failed to add overlay")
         # Clean up temp file
         try:
             os.remove(raw_path)
         except:
             pass
-        return output_path
+        return None
+
+    image, width, height = result
+
+    # Convert image to JPEG bytes
+    img_buffer = io.BytesIO()
+    image.save(img_buffer, 'JPEG', quality=90)
+    image_data = img_buffer.getvalue()
+
+    # Save to database
+    print("Saving capture to database...")
+    capture_id = save_capture(
+        image_data=image_data,
+        alicante_weather=alicante,
+        bratislava_weather=bratislava,
+        width=width,
+        height=height
+    )
+
+    # Clean up temp file
+    try:
+        os.remove(raw_path)
+    except:
+        pass
+
+    if capture_id:
+        print(f"Capture saved to database with ID: {capture_id}")
+        return capture_id
     else:
-        print("Failed to add overlay, keeping raw screenshot")
-        return raw_path
+        print("Failed to save capture to database")
+        return None
 
 
 def get_next_interval() -> int:
@@ -681,13 +709,21 @@ def get_next_interval() -> int:
 
 def run_once():
     """Run a single capture cycle."""
+    # Initialize database
+    if not init_database():
+        print("Failed to initialize database")
+        return
+
     driver = None
     try:
         driver = setup_driver()
         raw_path = capture_screenshot(driver)
         if raw_path:
-            final_path = process_screenshot(raw_path)
-            print(f"Capture complete: {final_path}")
+            capture_id = process_screenshot(raw_path)
+            if capture_id:
+                print(f"Capture complete: ID {capture_id}")
+            else:
+                print("Capture failed to save to database")
     except Exception as e:
         print(f"Error during capture cycle: {e}")
     finally:
@@ -702,8 +738,14 @@ def run_continuous():
     """Run continuous capture loop."""
     print(f"Starting continuous capture...")
     print(f"Target URL: {WEBCAM_URL}")
-    print(f"Output directory: {get_storage_path()}")
     print(f"Interval: {SCREENSHOT_INTERVAL}s ± {INTERVAL_JITTER}s")
+
+    # Initialize database
+    print("Initializing database...")
+    if not init_database():
+        print("Failed to initialize database, exiting")
+        sys.exit(1)
+    print("Database initialized successfully")
 
     # Handle graceful shutdown
     running = True

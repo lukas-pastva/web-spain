@@ -3,3 +3,4 @@ webdriver-manager==4.0.1
 Pillow==10.1.0
 requests==2.31.0
 schedule==1.2.1
+mysql-connector-python==8.2.0
