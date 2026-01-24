@@ -247,36 +247,71 @@ function generateTemperatureDifferenceSVG(cx, cy, alicanteTemp, bratislavaTemp) 
 }
 
 /**
- * Generate full overlay SVG with weather info, gauges, difference, and date indicator
- * @param {Object} options - Overlay options
- * @param {number} options.width - Image width
- * @param {number} options.height - Image height
+ * Generate SVG for a city info panel (weather + gauge combined)
+ */
+function generateCityPanelSVG(weather, x, y, panelWidth, panelHeight) {
+  if (!weather) return '';
+
+  const city = weather.city || 'Unknown';
+  const temp = weather.temperature ?? '--';
+  const sunrise = weather.sunrise || '--:--';
+  const sunset = weather.sunset || '--:--';
+  const dayLength = weather.day_length || '--';
+
+  const tempColor = typeof temp === 'number' ? getTemperatureColor(temp) : 'rgb(200,200,200)';
+  const gaugeSize = 90;
+  const gaugeCx = x + panelWidth / 2;
+  const gaugeCy = y + 80;
+
+  // Temperature arc
+  let arcPath = '';
+  if (typeof temp === 'number') {
+    const tempClamped = Math.max(-20, Math.min(50, temp));
+    const tempRatio = (tempClamped + 20) / 70;
+    const startAngle = 150;
+    const arcAngle = tempRatio * 300;
+    const endAngle = startAngle - arcAngle;
+    arcPath = describeArc(gaugeCx, gaugeCy, gaugeSize / 2 - 8, endAngle, startAngle);
+  }
+
+  return `
+    <!-- City name -->
+    <text x="${x + panelWidth / 2}" y="${y + 25}" fill="white" font-size="24" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${city}</text>
+
+    <!-- Temperature gauge -->
+    <circle cx="${gaugeCx}" cy="${gaugeCy}" r="${gaugeSize / 2}" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="3" />
+    ${arcPath ? `<path d="${arcPath}" fill="none" stroke="${tempColor}" stroke-width="12" stroke-linecap="round" />` : ''}
+    <text x="${gaugeCx}" y="${gaugeCy + 8}" fill="white" font-size="28" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${typeof temp === 'number' ? Math.round(temp) : temp}°C</text>
+
+    <!-- Weather details -->
+    <text x="${x + panelWidth / 2}" y="${gaugeCy + 70}" fill="rgba(255,255,255,0.9)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">Sunrise: ${sunrise}</text>
+    <text x="${x + panelWidth / 2}" y="${gaugeCy + 92}" fill="rgba(255,255,255,0.9)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">Sunset: ${sunset}</text>
+    <text x="${x + panelWidth / 2}" y="${gaugeCy + 114}" fill="rgba(255,255,255,0.9)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">Day: ${dayLength}</text>
+  `;
+}
+
+/**
+ * Generate HD layout SVG (1280x720) with image placeholder and info panels
+ * @param {Object} options - Layout options
  * @param {Object} options.alicanteWeather - Alicante weather data
  * @param {Object} options.bratislavaWeather - Bratislava weather data
  * @param {string} options.date - Date in YYYY-MM-DD format
- * @returns {string} Complete SVG markup
+ * @returns {string} Complete SVG markup for info panels (not including image)
  */
-export function generateFullOverlaySVG({ width, height, alicanteWeather, bratislavaWeather, date }) {
-  const margin = 20;
+export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }) {
+  const canvasWidth = 1280;
+  const canvasHeight = 720;
+  const imageWidth = 800;
+  const imageHeight = 450;
+  const sidePanelWidth = canvasWidth - imageWidth; // 480
+  const bottomPanelHeight = canvasHeight - imageHeight; // 270
 
-  // Weather info positions
-  const weatherY = margin;
-
-  // Gauge positions
-  const gaugeSize = 80;
-  const gaugeY = height - gaugeSize / 2 - 50;
-
-  // Date indicator dimensions
-  const dateOverlayHeight = Math.max(30, Math.round(height * 0.065));
-  const dateY = height - dateOverlayHeight - 10;
-
-  // Parse date for date indicator
+  // Parse date
   const [year, month, day] = date.split('-').map(Number);
-  const currentDate = new Date(year, month - 1, day);
   const daysInMonth = new Date(year, month, 0).getDate();
   const dayPosition = ((day - 1) / (daysInMonth - 1)) * 100;
 
-  // Generate 5 months centered around current month
+  // Generate 5 months
   const months = [];
   for (let i = -2; i <= 2; i++) {
     const targetDate = new Date(year, month - 1 + i, 1);
@@ -288,23 +323,32 @@ export function generateFullOverlaySVG({ width, height, alicanteWeather, bratisl
     });
   }
 
-  // Date indicator sizing
-  const fontSize = Math.max(11, dateOverlayHeight * 0.18);
-  const activeFontSize = Math.max(13, dateOverlayHeight * 0.22);
-  const trackHeight = Math.max(4, dateOverlayHeight * 0.08);
-  const markerHeight = Math.max(20, dateOverlayHeight * 0.35);
-  const dayLabelSize = Math.max(12, dateOverlayHeight * 0.20);
-  const trackMargin = 40;
-  const trackWidth = width - trackMargin * 2;
-  const trackY = dateY + dateOverlayHeight * 0.65;
+  // Temperature difference
+  const aliTemp = alicanteWeather?.temperature ?? 0;
+  const braTemp = bratislavaWeather?.temperature ?? 0;
+  const diff = aliTemp - braTemp;
+  const diffSign = diff > 0 ? '+' : '';
+  const diffColor = diff > 0 ? 'rgb(255,180,100)' : diff < 0 ? 'rgb(100,180,255)' : 'rgb(200,200,200)';
+  const diffLabel = diff > 0 ? 'Alicante warmer' : diff < 0 ? 'Bratislava warmer' : 'Same temperature';
+
+  // Date indicator positioning in bottom panel
+  const dateY = imageHeight + 180;
+  const trackMargin = 100;
+  const trackWidth = canvasWidth - trackMargin * 2;
+  const trackHeight = 8;
+  const markerHeight = 40;
   const markerX = trackMargin + (trackWidth * dayPosition / 100);
-  const monthWidth = width / 5;
 
   return `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
       <defs>
+        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:rgb(20,25,40)" />
+          <stop offset="100%" style="stop-color:rgb(10,15,25)" />
+        </linearGradient>
         <linearGradient id="trackGrad" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" style="stop-color:rgb(102,126,234)" />
+          <stop offset="50%" style="stop-color:rgb(118,75,162)" />
           <stop offset="100%" style="stop-color:rgb(102,126,234)" />
         </linearGradient>
         <linearGradient id="labelGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -313,64 +357,84 @@ export function generateFullOverlaySVG({ width, height, alicanteWeather, bratisl
         </linearGradient>
       </defs>
 
-      <!-- Weather info - Alicante (top-left) -->
-      ${generateWeatherInfoSVG(alicanteWeather, margin, weatherY, 'left')}
+      <!-- Background -->
+      <rect width="${canvasWidth}" height="${canvasHeight}" fill="url(#bgGrad)" />
 
-      <!-- Weather info - Bratislava (top-right) -->
-      ${generateWeatherInfoSVG(bratislavaWeather, width - margin, weatherY, 'right')}
+      <!-- Image border/frame -->
+      <rect x="0" y="0" width="${imageWidth}" height="${imageHeight}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2" />
 
-      <!-- Temperature gauge - Alicante (bottom-left) -->
-      ${alicanteWeather ? generateTemperatureGaugeSVG(margin + gaugeSize / 2 + 20, gaugeY, alicanteWeather.temperature || 0, 'Alicante', gaugeSize) : ''}
+      <!-- Right side panel - Alicante (top half) -->
+      <rect x="${imageWidth}" y="0" width="${sidePanelWidth}" height="${imageHeight / 2}" fill="rgba(255,255,255,0.03)" />
+      ${generateCityPanelSVG(
+        alicanteWeather ? { ...alicanteWeather, city: 'Alicante' } : null,
+        imageWidth, 10, sidePanelWidth, imageHeight / 2 - 20
+      )}
 
-      <!-- Temperature gauge - Bratislava (bottom-right) -->
-      ${bratislavaWeather ? generateTemperatureGaugeSVG(width - margin - gaugeSize / 2 - 20, gaugeY, bratislavaWeather.temperature || 0, 'Bratislava', gaugeSize) : ''}
+      <!-- Right side panel - Bratislava (bottom half) -->
+      <rect x="${imageWidth}" y="${imageHeight / 2}" width="${sidePanelWidth}" height="${imageHeight / 2}" fill="rgba(255,255,255,0.05)" />
+      ${generateCityPanelSVG(
+        bratislavaWeather ? { ...bratislavaWeather, city: 'Bratislava' } : null,
+        imageWidth, imageHeight / 2 + 10, sidePanelWidth, imageHeight / 2 - 20
+      )}
 
-      <!-- Temperature difference (bottom-center) -->
-      ${alicanteWeather && bratislavaWeather ? generateTemperatureDifferenceSVG(width / 2, gaugeY, alicanteWeather.temperature || 0, bratislavaWeather.temperature || 0) : ''}
+      <!-- Bottom panel -->
+      <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="${bottomPanelHeight}" fill="rgba(255,255,255,0.02)" />
 
-      <!-- Date indicator - Month labels -->
-      ${months.map((m, i) => `
-        <text
-          x="${i * monthWidth + monthWidth / 2}"
-          y="${dateY + 18}"
-          fill="${m.isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.5)'}"
-          font-size="${m.isActive ? activeFontSize : fontSize}"
-          font-weight="${m.isActive ? '600' : '500'}"
-          text-anchor="middle"
-          font-family="Arial, sans-serif"
-        >${m.label}</text>
-      `).join('')}
+      <!-- Temperature difference (bottom left area) -->
+      <text x="150" y="${imageHeight + 50}" fill="rgba(255,255,255,0.6)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">TEMPERATURE DIFFERENCE</text>
+      <text x="150" y="${imageHeight + 95}" fill="${diffColor}" font-size="42" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°C</text>
+      <text x="150" y="${imageHeight + 125}" fill="rgba(255,255,255,0.7)" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
 
-      <!-- Date indicator - Track bar -->
-      <rect x="${trackMargin}" y="${trackY}" width="${trackWidth}" height="${trackHeight}" fill="url(#trackGrad)" rx="${trackHeight / 2}" />
+      <!-- Date indicator section -->
+      <text x="${canvasWidth / 2 + 100}" y="${imageHeight + 40}" fill="rgba(255,255,255,0.6)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">DATE</text>
 
-      <!-- Date indicator - Day marker -->
-      <rect x="${markerX - 1.5}" y="${trackY - (markerHeight - trackHeight) / 2}" width="3" height="${markerHeight}" fill="white" rx="1.5" />
+      <!-- Month labels -->
+      ${months.map((m, i) => {
+        const monthX = 350 + i * 180;
+        return `
+          <text
+            x="${monthX}"
+            y="${imageHeight + 80}"
+            fill="${m.isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.4)'}"
+            font-size="${m.isActive ? 20 : 16}"
+            font-weight="${m.isActive ? '600' : '400'}"
+            text-anchor="middle"
+            font-family="Arial, sans-serif"
+          >${m.label}</text>
+        `;
+      }).join('')}
 
-      <!-- Date indicator - Day label background -->
-      <rect x="${markerX - dayLabelSize * 1.2}" y="${trackY - markerHeight / 2 - dayLabelSize * 1.8}" width="${dayLabelSize * 2.4}" height="${dayLabelSize * 1.4}" fill="url(#labelGrad)" rx="4" />
+      <!-- Track bar -->
+      <rect x="${trackMargin}" y="${dateY}" width="${trackWidth}" height="${trackHeight}" fill="url(#trackGrad)" rx="${trackHeight / 2}" />
 
-      <!-- Date indicator - Day number -->
-      <text x="${markerX}" y="${trackY - markerHeight / 2 - dayLabelSize * 0.8}" fill="white" font-size="${dayLabelSize}" font-weight="700" text-anchor="middle" font-family="Arial, sans-serif">${day}</text>
+      <!-- Day marker -->
+      <rect x="${markerX - 2}" y="${dateY - (markerHeight - trackHeight) / 2}" width="4" height="${markerHeight}" fill="white" rx="2" />
+
+      <!-- Day label -->
+      <rect x="${markerX - 22}" y="${dateY - markerHeight / 2 - 35}" width="44" height="28" fill="url(#labelGrad)" rx="6" />
+      <text x="${markerX}" y="${dateY - markerHeight / 2 - 15}" fill="white" font-size="18" font-weight="700" text-anchor="middle" font-family="Arial, sans-serif">${day}</text>
+
+      <!-- Current date display -->
+      <text x="${canvasWidth - 100}" y="${imageHeight + 80}" fill="rgba(255,255,255,0.8)" font-size="24" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${date}</text>
     </svg>
   `;
 }
 
 /**
- * Apply full overlay to an image buffer
- * @param {Buffer} imageBuffer - Input image buffer
+ * Apply HD layout overlay to an image buffer
+ * Creates a 1280x720 canvas with image in top-left and info panels around it
+ * @param {Buffer} imageBuffer - Input image buffer (800x450)
  * @param {Object} weatherData - Weather metadata
  * @param {Object} weatherData.alicante - Alicante weather
  * @param {Object} weatherData.bratislava - Bratislava weather
  * @param {string} date - Date in YYYY-MM-DD format
- * @returns {Promise<Buffer>} Output image buffer with overlay
+ * @returns {Promise<Buffer>} Output image buffer (1280x720) with layout
  */
 export async function applyOverlayToBuffer(imageBuffer, weatherData, date) {
-  const image = sharp(imageBuffer);
-  const metadata = await image.metadata();
-  const { width, height } = metadata;
+  const canvasWidth = 1280;
+  const canvasHeight = 720;
 
-  // Build weather objects with city names
+  // Build weather objects
   const alicanteWeather = weatherData.alicante ? {
     city: 'Alicante',
     temperature: weatherData.alicante.temp,
@@ -387,21 +451,20 @@ export async function applyOverlayToBuffer(imageBuffer, weatherData, date) {
     day_length: weatherData.bratislava.day_length
   } : null;
 
-  // Generate full overlay SVG
-  const overlaySVG = generateFullOverlaySVG({
-    width,
-    height,
+  // Generate HD layout SVG (background + info panels)
+  const layoutSVG = generateHDLayoutSVG({
     alicanteWeather,
     bratislavaWeather,
     date
   });
 
-  const svgBuffer = Buffer.from(overlaySVG);
+  const svgBuffer = Buffer.from(layoutSVG);
 
-  // Composite overlay onto image
-  const result = await sharp(imageBuffer)
+  // Create the HD canvas with the layout SVG as background
+  // Then composite the original image on top-left
+  const result = await sharp(svgBuffer)
     .composite([{
-      input: svgBuffer,
+      input: imageBuffer,
       top: 0,
       left: 0
     }])
