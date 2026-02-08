@@ -8,6 +8,7 @@ const navItems = [
   { path: '/daylight-videos', label: 'Daylight', icon: '☀️' },
   { path: '/combined-24h', label: 'Combined 24h', icon: '📹' },
   { path: '/combined-daylight', label: 'Combined Daylight', icon: '🌅' },
+  { path: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 
 function Navigation() {

@@ -1,5 +1,5 @@
 import express from 'express';
-import { imageService } from '../services/imageService.js';
+import { imageService, getOverlaySettings, updateOverlaySettings } from '../services/imageService.js';
 import { applyOverlayToBuffer } from '../utils/imageOverlay.js';
 
 const router = express.Router();
@@ -42,15 +42,30 @@ router.get('/data/:id/overlay', async (req, res) => {
       return res.status(404).json({ error: 'Image not found' });
     }
 
-    // Apply overlay to image
+    // Get current settings
+    const settings = getOverlaySettings();
+
+    // Fetch temperature history if chart is enabled
+    let temperatureHistory = null;
+    if (settings.showChart) {
+      temperatureHistory = await imageService.getTemperatureHistory(captureId);
+    }
+
+    // Apply overlay to image with options
     const overlayedImage = await applyOverlayToBuffer(
       captureData.imageData,
       captureData.weather,
-      captureData.date
+      captureData.date,
+      {
+        showChart: settings.showChart,
+        temperatureHistory
+      }
     );
 
     res.set('Content-Type', 'image/jpeg');
-    res.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+    // Use shorter cache when chart is enabled (data changes)
+    const cacheTime = settings.showChart ? 60 : 31536000;
+    res.set('Cache-Control', `public, max-age=${cacheTime}`);
     res.send(overlayedImage);
   } catch (error) {
     console.error('Error getting image with overlay:', error);
@@ -156,6 +171,31 @@ router.delete('/all', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Error deleting all images:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get overlay settings
+router.get('/settings', (req, res) => {
+  try {
+    const settings = getOverlaySettings();
+    res.json(settings);
+  } catch (error) {
+    console.error('Error getting settings:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update overlay settings
+router.put('/settings', express.json(), (req, res) => {
+  try {
+    const { showChart } = req.body;
+    const updatedSettings = updateOverlaySettings({
+      showChart: Boolean(showChart)
+    });
+    res.json(updatedSettings);
+  } catch (error) {
+    console.error('Error updating settings:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

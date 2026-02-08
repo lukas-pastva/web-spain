@@ -125,6 +125,175 @@ function polarToCartesian(cx, cy, radius, angleInDegrees) {
 }
 
 /**
+ * Generate SVG for 24-hour temperature chart
+ * @param {Array} temperatureHistory - Array of {time, alicanteTemp, bratislavaTemp}
+ * @param {number} x - X position
+ * @param {number} y - Y position
+ * @param {number} width - Chart width
+ * @param {number} height - Chart height
+ * @param {number} animationOffset - Animation offset (0-1) for moving chart effect
+ * @returns {string} SVG markup
+ */
+function generateTemperatureChartSVG(temperatureHistory, x, y, width, height, animationOffset = 0) {
+  if (!temperatureHistory || temperatureHistory.length < 2) {
+    return `
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="rgba(0,0,0,0.3)" />
+      <text x="${x + width/2}" y="${y + height/2}" fill="rgba(255,255,255,0.5)" font-size="12" text-anchor="middle" font-family="Arial, sans-serif">No temperature data</text>
+    `;
+  }
+
+  // Find min/max temps for scaling
+  let minTemp = Infinity, maxTemp = -Infinity;
+  for (const point of temperatureHistory) {
+    if (point.alicanteTemp !== null) {
+      minTemp = Math.min(minTemp, point.alicanteTemp);
+      maxTemp = Math.max(maxTemp, point.alicanteTemp);
+    }
+    if (point.bratislavaTemp !== null) {
+      minTemp = Math.min(minTemp, point.bratislavaTemp);
+      maxTemp = Math.max(maxTemp, point.bratislavaTemp);
+    }
+  }
+
+  // Add padding to temp range
+  const tempPadding = Math.max(2, (maxTemp - minTemp) * 0.1);
+  minTemp = Math.floor(minTemp - tempPadding);
+  maxTemp = Math.ceil(maxTemp + tempPadding);
+  const tempRange = maxTemp - minTemp || 1;
+
+  const chartPadding = { top: 25, right: 10, bottom: 25, left: 35 };
+  const chartWidth = width - chartPadding.left - chartPadding.right;
+  const chartHeight = height - chartPadding.top - chartPadding.bottom;
+  const chartX = x + chartPadding.left;
+  const chartY = y + chartPadding.top;
+
+  // Generate path points with animation offset
+  const pointCount = temperatureHistory.length;
+  const alicantePoints = [];
+  const bratislavaPoints = [];
+
+  for (let i = 0; i < pointCount; i++) {
+    const point = temperatureHistory[i];
+    // Apply animation offset for smooth scrolling effect
+    const xPos = chartX + (i / (pointCount - 1)) * chartWidth;
+
+    if (point.alicanteTemp !== null) {
+      const yPos = chartY + chartHeight - ((point.alicanteTemp - minTemp) / tempRange) * chartHeight;
+      alicantePoints.push({ x: xPos, y: yPos });
+    }
+    if (point.bratislavaTemp !== null) {
+      const yPos = chartY + chartHeight - ((point.bratislavaTemp - minTemp) / tempRange) * chartHeight;
+      bratislavaPoints.push({ x: xPos, y: yPos });
+    }
+  }
+
+  // Create smooth SVG paths
+  const createSmoothPath = (points) => {
+    if (points.length < 2) return '';
+    let path = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const cpx = (prev.x + curr.x) / 2;
+      path += ` Q ${prev.x} ${prev.y} ${cpx} ${(prev.y + curr.y) / 2}`;
+    }
+    const last = points[points.length - 1];
+    path += ` L ${last.x} ${last.y}`;
+    return path;
+  };
+
+  const alicantePath = createSmoothPath(alicantePoints);
+  const bratislavaPath = createSmoothPath(bratislavaPoints);
+
+  // Create area fill paths (for gradient effect under lines)
+  const createAreaPath = (points) => {
+    if (points.length < 2) return '';
+    let path = createSmoothPath(points);
+    const last = points[points.length - 1];
+    const first = points[0];
+    path += ` L ${last.x} ${chartY + chartHeight} L ${first.x} ${chartY + chartHeight} Z`;
+    return path;
+  };
+
+  // Generate time labels (show every 6 hours)
+  const timeLabels = [];
+  const hoursPerPoint = 24 / (pointCount - 1);
+  for (let h = 0; h <= 24; h += 6) {
+    const pointIndex = Math.round(h / hoursPerPoint);
+    if (pointIndex < pointCount) {
+      const xPos = chartX + (pointIndex / (pointCount - 1)) * chartWidth;
+      timeLabels.push({ x: xPos, label: `${24 - h}h` });
+    }
+  }
+
+  // Generate temp labels
+  const tempLabels = [];
+  const tempStep = Math.ceil(tempRange / 4);
+  for (let t = minTemp; t <= maxTemp; t += tempStep) {
+    const yPos = chartY + chartHeight - ((t - minTemp) / tempRange) * chartHeight;
+    tempLabels.push({ y: yPos, label: `${t}°` });
+  }
+
+  // Current temps (last point)
+  const lastPoint = temperatureHistory[temperatureHistory.length - 1];
+  const currentAliTemp = lastPoint?.alicanteTemp?.toFixed(1) || '--';
+  const currentBraTemp = lastPoint?.bratislavaTemp?.toFixed(1) || '--';
+
+  return `
+    <!-- Chart background -->
+    <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="rgba(0,0,0,0.35)" />
+
+    <!-- Chart title -->
+    <text x="${x + width/2}" y="${y + 16}" fill="rgba(255,255,255,0.8)" font-size="11" font-weight="600" text-anchor="middle" font-family="Arial, sans-serif">24H TEMPERATURE</text>
+
+    <!-- Grid lines -->
+    ${tempLabels.map(t => `
+      <line x1="${chartX}" y1="${t.y}" x2="${chartX + chartWidth}" y2="${t.y}" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+      <text x="${chartX - 5}" y="${t.y + 4}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="end" font-family="Arial, sans-serif">${t.label}</text>
+    `).join('')}
+
+    <!-- Time labels -->
+    ${timeLabels.map(t => `
+      <text x="${t.x}" y="${chartY + chartHeight + 14}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="middle" font-family="Arial, sans-serif">${t.label}</text>
+    `).join('')}
+
+    <!-- Gradient definitions for area fills -->
+    <defs>
+      <linearGradient id="aliAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:rgb(251,146,60);stop-opacity:0.3" />
+        <stop offset="100%" style="stop-color:rgb(251,146,60);stop-opacity:0.05" />
+      </linearGradient>
+      <linearGradient id="braAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color:rgb(56,189,248);stop-opacity:0.3" />
+        <stop offset="100%" style="stop-color:rgb(56,189,248);stop-opacity:0.05" />
+      </linearGradient>
+    </defs>
+
+    <!-- Area fills -->
+    ${alicantePath ? `<path d="${createAreaPath(alicantePoints)}" fill="url(#aliAreaGrad)" />` : ''}
+    ${bratislavaPath ? `<path d="${createAreaPath(bratislavaPoints)}" fill="url(#braAreaGrad)" />` : ''}
+
+    <!-- Temperature lines -->
+    ${alicantePath ? `<path d="${alicantePath}" fill="none" stroke="rgb(251,146,60)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+    ${bratislavaPath ? `<path d="${bratislavaPath}" fill="none" stroke="rgb(56,189,248)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+
+    <!-- Current value markers -->
+    ${alicantePoints.length > 0 ? `
+      <circle cx="${alicantePoints[alicantePoints.length-1].x}" cy="${alicantePoints[alicantePoints.length-1].y}" r="4" fill="rgb(251,146,60)" stroke="white" stroke-width="1.5" />
+    ` : ''}
+    ${bratislavaPoints.length > 0 ? `
+      <circle cx="${bratislavaPoints[bratislavaPoints.length-1].x}" cy="${bratislavaPoints[bratislavaPoints.length-1].y}" r="4" fill="rgb(56,189,248)" stroke="white" stroke-width="1.5" />
+    ` : ''}
+
+    <!-- Legend -->
+    <circle cx="${x + 12}" cy="${y + height - 10}" r="4" fill="rgb(251,146,60)" />
+    <text x="${x + 20}" y="${y + height - 6}" fill="rgba(255,255,255,0.8)" font-size="9" font-family="Arial, sans-serif">ALI ${currentAliTemp}°</text>
+    <circle cx="${x + 75}" cy="${y + height - 10}" r="4" fill="rgb(56,189,248)" />
+    <text x="${x + 83}" y="${y + height - 6}" fill="rgba(255,255,255,0.8)" font-size="9" font-family="Arial, sans-serif">BRA ${currentBraTemp}°</text>
+  `;
+}
+
+/**
  * Generate SVG for temperature gauge
  * @param {number} cx - Center X
  * @param {number} cy - Center Y
@@ -296,9 +465,11 @@ function generateCityPanelSVG(weather, x, y, panelWidth, panelHeight) {
  * @param {Object} options.alicanteWeather - Alicante weather data
  * @param {Object} options.bratislavaWeather - Bratislava weather data
  * @param {string} options.date - Date in YYYY-MM-DD format
+ * @param {Array} options.temperatureHistory - Optional 24h temperature history
+ * @param {boolean} options.showChart - Whether to show the temperature chart
  * @returns {string} Complete SVG markup for info panels (not including image)
  */
-export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }) {
+export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date, temperatureHistory = null, showChart = false }) {
   const canvasWidth = 1280;
   const canvasHeight = 720;
   const imageWidth = 800;
@@ -469,6 +640,9 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }
       <!-- Current date display (right side) -->
       <rect x="${canvasWidth - 180}" y="${imageHeight + 30}" width="150" height="50" rx="10" fill="rgba(0,0,0,0.25)" />
       <text x="${canvasWidth - 105}" y="${imageHeight + 63}" fill="rgba(255,255,255,0.9)" font-size="22" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${date}</text>
+
+      <!-- Temperature chart (if enabled) -->
+      ${showChart && temperatureHistory ? generateTemperatureChartSVG(temperatureHistory, canvasWidth - 180, imageHeight + 90, 160, 160) : ''}
     </svg>
   `;
 }
@@ -481,9 +655,12 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date }
  * @param {Object} weatherData.alicante - Alicante weather
  * @param {Object} weatherData.bratislava - Bratislava weather
  * @param {string} date - Date in YYYY-MM-DD format
+ * @param {Object} options - Optional settings
+ * @param {Array} options.temperatureHistory - 24h temperature history
+ * @param {boolean} options.showChart - Whether to show temperature chart
  * @returns {Promise<Buffer>} Output image buffer (1280x720) with layout
  */
-export async function applyOverlayToBuffer(imageBuffer, weatherData, date) {
+export async function applyOverlayToBuffer(imageBuffer, weatherData, date, options = {}) {
   const canvasWidth = 1280;
   const canvasHeight = 720;
 
@@ -508,7 +685,9 @@ export async function applyOverlayToBuffer(imageBuffer, weatherData, date) {
   const layoutSVG = generateHDLayoutSVG({
     alicanteWeather,
     bratislavaWeather,
-    date
+    date,
+    temperatureHistory: options.temperatureHistory || null,
+    showChart: options.showChart || false
   });
 
   const svgBuffer = Buffer.from(layoutSVG);

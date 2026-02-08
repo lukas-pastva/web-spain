@@ -6,6 +6,7 @@ import DailyVideos from './pages/DailyVideos';
 import DaylightVideos from './pages/DaylightVideos';
 import Combined24hVideos from './pages/Combined24hVideos';
 import CombinedDaylightVideos from './pages/CombinedDaylightVideos';
+import Settings from './pages/Settings';
 import './App.css';
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
             <Route path="/daylight-videos" element={<DaylightVideos />} />
             <Route path="/combined-24h" element={<Combined24hVideos />} />
             <Route path="/combined-daylight" element={<CombinedDaylightVideos />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>

@@ -394,6 +394,49 @@ export async function deleteAllCaptures() {
 }
 
 /**
+ * Get temperature history for the last 24 hours from a given capture
+ * @param {number} captureId - The reference capture ID
+ * @returns {Promise<Array>} Array of temperature data points
+ */
+export async function getTemperatureHistory(captureId) {
+  const conn = await getPool().getConnection();
+  try {
+    // First get the captured_at time for the reference capture
+    const [refRows] = await conn.execute(`
+      SELECT captured_at FROM captures WHERE id = ?
+    `, [captureId]);
+
+    if (refRows.length === 0) return [];
+
+    const capturedAt = refRows[0].captured_at;
+
+    // Get temperature data for 24 hours before this capture
+    const [rows] = await conn.execute(`
+      SELECT
+        captured_at,
+        alicante_temp,
+        bratislava_temp
+      FROM captures
+      WHERE captured_at <= ?
+        AND captured_at >= DATE_SUB(?, INTERVAL 24 HOUR)
+        AND alicante_temp IS NOT NULL
+      ORDER BY captured_at ASC
+    `, [capturedAt, capturedAt]);
+
+    return rows.map(row => ({
+      time: row.captured_at,
+      alicanteTemp: row.alicante_temp,
+      bratislavaTemp: row.bratislava_temp
+    }));
+  } catch (error) {
+    console.error('Error getting temperature history:', error);
+    return [];
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * Close database pool
  */
 export async function closePool() {
