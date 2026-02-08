@@ -125,19 +125,26 @@ function polarToCartesian(cx, cy, radius, angleInDegrees) {
 }
 
 /**
- * Generate SVG for 7-day temperature chart
+ * Generate SVG for 7-day temperature chart with integrated difference indicators
  * @param {Array} temperatureHistory - Array of {time, alicanteTemp, bratislavaTemp}
  * @param {number} x - X position
  * @param {number} y - Y position
  * @param {number} width - Chart width
  * @param {number} height - Chart height
+ * @param {number} diff - Temperature difference
+ * @param {string} diffSign - Sign for difference display
+ * @param {string} diffColor - Color for difference text
+ * @param {string} diffLabel - Label describing which city is warmer
+ * @param {string} dayLengthDiffStr - Day length difference string
+ * @param {string} dayLengthColor - Color for day length text
+ * @param {string} dayLengthLabel - Label for day length difference
  * @returns {string} SVG markup
  */
-function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
+function generateTemperatureChartSVG(temperatureHistory, x, y, width, height, diff, diffSign, diffColor, diffLabel, dayLengthDiffStr, dayLengthColor, dayLengthLabel) {
   if (!temperatureHistory || temperatureHistory.length < 2) {
     return `
       <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="12" fill="rgba(0,0,0,0.3)" />
-      <text x="${x + width/2}" y="${y + height/2}" fill="rgba(255,255,255,0.5)" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">No temperature data</text>
+      <text x="${x + width/2}" y="${y + height/2}" fill="rgba(255,255,255,0.5)" font-size="16" text-anchor="middle" font-family="Arial, sans-serif">No temperature data available</text>
     `;
   }
 
@@ -160,11 +167,11 @@ function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
   maxTemp = Math.ceil(maxTemp + tempPadding);
   const tempRange = maxTemp - minTemp || 1;
 
-  const chartPadding = { top: 35, right: 15, bottom: 35, left: 45 };
-  const chartWidth = width - chartPadding.left - chartPadding.right;
-  const chartHeight = height - chartPadding.top - chartPadding.bottom;
-  const chartX = x + chartPadding.left;
-  const chartY = y + chartPadding.top;
+  const chartPadding = { top: 40, right: 20, bottom: 40, left: 50 };
+  const innerChartWidth = width - chartPadding.left - chartPadding.right;
+  const innerChartHeight = height - chartPadding.top - chartPadding.bottom;
+  const chartStartX = x + chartPadding.left;
+  const chartStartY = y + chartPadding.top;
 
   // Generate path points
   const pointCount = temperatureHistory.length;
@@ -173,14 +180,14 @@ function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
 
   for (let i = 0; i < pointCount; i++) {
     const point = temperatureHistory[i];
-    const xPos = chartX + (i / (pointCount - 1)) * chartWidth;
+    const xPos = chartStartX + (i / (pointCount - 1)) * innerChartWidth;
 
     if (point.alicanteTemp !== null) {
-      const yPos = chartY + chartHeight - ((point.alicanteTemp - minTemp) / tempRange) * chartHeight;
+      const yPos = chartStartY + innerChartHeight - ((point.alicanteTemp - minTemp) / tempRange) * innerChartHeight;
       alicantePoints.push({ x: xPos, y: yPos, temp: point.alicanteTemp });
     }
     if (point.bratislavaTemp !== null) {
-      const yPos = chartY + chartHeight - ((point.bratislavaTemp - minTemp) / tempRange) * chartHeight;
+      const yPos = chartStartY + innerChartHeight - ((point.bratislavaTemp - minTemp) / tempRange) * innerChartHeight;
       bratislavaPoints.push({ x: xPos, y: yPos, temp: point.bratislavaTemp });
     }
   }
@@ -207,7 +214,7 @@ function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
     let path = createSmoothPath(points);
     const last = points[points.length - 1];
     const first = points[0];
-    path += ` L ${last.x} ${chartY + chartHeight} L ${first.x} ${chartY + chartHeight} Z`;
+    path += ` L ${last.x} ${chartStartY + innerChartHeight} L ${first.x} ${chartStartY + innerChartHeight} Z`;
     return path;
   };
 
@@ -215,7 +222,7 @@ function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
   const dayLabels = [];
   const daysCount = 7;
   for (let d = 0; d <= daysCount; d++) {
-    const xPos = chartX + (d / daysCount) * chartWidth;
+    const xPos = chartStartX + (d / daysCount) * innerChartWidth;
     const label = d === daysCount ? 'Now' : `-${daysCount - d}d`;
     dayLabels.push({ x: xPos, label });
   }
@@ -224,7 +231,7 @@ function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
   const tempLabels = [];
   const tempStep = Math.ceil(tempRange / 5);
   for (let t = minTemp; t <= maxTemp; t += tempStep) {
-    const yPos = chartY + chartHeight - ((t - minTemp) / tempRange) * chartHeight;
+    const yPos = chartStartY + innerChartHeight - ((t - minTemp) / tempRange) * innerChartHeight;
     tempLabels.push({ y: yPos, label: `${t}°` });
   }
 
@@ -253,22 +260,31 @@ function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
     <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="12" fill="url(#chartBgGrad)" />
 
     <!-- Chart title -->
-    <text x="${x + width/2}" y="${y + 22}" fill="rgba(255,255,255,0.9)" font-size="14" font-weight="600" text-anchor="middle" font-family="Arial, sans-serif">7-DAY TEMPERATURE TREND</text>
+    <text x="${x + 200}" y="${y + 24}" fill="rgba(255,255,255,0.9)" font-size="16" font-weight="600" text-anchor="middle" font-family="Arial, sans-serif">7-DAY TEMPERATURE TREND</text>
+
+    <!-- Difference indicators in top right of chart -->
+    <rect x="${x + width - 280}" y="${y + 8}" width="130" height="28" rx="6" fill="rgba(0,0,0,0.3)" />
+    <text x="${x + width - 270}" y="${y + 27}" fill="rgba(255,255,255,0.6)" font-size="10" font-family="Arial, sans-serif">Diff:</text>
+    <text x="${x + width - 235}" y="${y + 27}" fill="${diffColor}" font-size="13" font-weight="bold" font-family="Arial, sans-serif">${diffSign}${diff?.toFixed(1) || '--'}°C</text>
+
+    <rect x="${x + width - 140}" y="${y + 8}" width="130" height="28" rx="6" fill="rgba(0,0,0,0.3)" />
+    <text x="${x + width - 130}" y="${y + 27}" fill="rgba(255,255,255,0.6)" font-size="10" font-family="Arial, sans-serif">Day:</text>
+    <text x="${x + width - 100}" y="${y + 27}" fill="${dayLengthColor}" font-size="13" font-weight="bold" font-family="Arial, sans-serif">${dayLengthDiffStr}</text>
 
     <!-- Horizontal grid lines -->
     ${tempLabels.map(t => `
-      <line x1="${chartX}" y1="${t.y}" x2="${chartX + chartWidth}" y2="${t.y}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
-      <text x="${chartX - 8}" y="${t.y + 4}" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="end" font-family="Arial, sans-serif">${t.label}</text>
+      <line x1="${chartStartX}" y1="${t.y}" x2="${chartStartX + innerChartWidth}" y2="${t.y}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+      <text x="${chartStartX - 10}" y="${t.y + 4}" fill="rgba(255,255,255,0.6)" font-size="12" text-anchor="end" font-family="Arial, sans-serif">${t.label}</text>
     `).join('')}
 
     <!-- Vertical grid lines for days -->
-    ${dayLabels.map((d, i) => i < dayLabels.length - 1 ? `
-      <line x1="${d.x}" y1="${chartY}" x2="${d.x}" y2="${chartY + chartHeight}" stroke="rgba(255,255,255,0.05)" stroke-width="1" stroke-dasharray="4,4" />
-    ` : '').join('')}
+    ${dayLabels.map((d, i) => `
+      <line x1="${d.x}" y1="${chartStartY}" x2="${d.x}" y2="${chartStartY + innerChartHeight}" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
+    `).join('')}
 
     <!-- Day labels -->
     ${dayLabels.map(d => `
-      <text x="${d.x}" y="${chartY + chartHeight + 18}" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="middle" font-family="Arial, sans-serif">${d.label}</text>
+      <text x="${d.x}" y="${chartStartY + innerChartHeight + 20}" fill="rgba(255,255,255,0.7)" font-size="12" text-anchor="middle" font-family="Arial, sans-serif">${d.label}</text>
     `).join('')}
 
     <!-- Area fills -->
@@ -276,24 +292,24 @@ function generateTemperatureChartSVG(temperatureHistory, x, y, width, height) {
     ${bratislavaPath ? `<path d="${createAreaPath(bratislavaPoints)}" fill="url(#braAreaGrad7)" />` : ''}
 
     <!-- Temperature lines -->
-    ${bratislavaPath ? `<path d="${bratislavaPath}" fill="none" stroke="rgb(56,189,248)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />` : ''}
-    ${alicantePath ? `<path d="${alicantePath}" fill="none" stroke="rgb(251,146,60)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+    ${bratislavaPath ? `<path d="${bratislavaPath}" fill="none" stroke="rgb(56,189,248)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+    ${alicantePath ? `<path d="${alicantePath}" fill="none" stroke="rgb(251,146,60)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />` : ''}
 
     <!-- Current value markers with glow -->
     ${alicantePoints.length > 0 ? `
-      <circle cx="${alicantePoints[alicantePoints.length-1].x}" cy="${alicantePoints[alicantePoints.length-1].y}" r="6" fill="rgb(251,146,60)" opacity="0.3" />
-      <circle cx="${alicantePoints[alicantePoints.length-1].x}" cy="${alicantePoints[alicantePoints.length-1].y}" r="4" fill="rgb(251,146,60)" stroke="white" stroke-width="2" />
+      <circle cx="${alicantePoints[alicantePoints.length-1].x}" cy="${alicantePoints[alicantePoints.length-1].y}" r="8" fill="rgb(251,146,60)" opacity="0.3" />
+      <circle cx="${alicantePoints[alicantePoints.length-1].x}" cy="${alicantePoints[alicantePoints.length-1].y}" r="5" fill="rgb(251,146,60)" stroke="white" stroke-width="2" />
     ` : ''}
     ${bratislavaPoints.length > 0 ? `
-      <circle cx="${bratislavaPoints[bratislavaPoints.length-1].x}" cy="${bratislavaPoints[bratislavaPoints.length-1].y}" r="6" fill="rgb(56,189,248)" opacity="0.3" />
-      <circle cx="${bratislavaPoints[bratislavaPoints.length-1].x}" cy="${bratislavaPoints[bratislavaPoints.length-1].y}" r="4" fill="rgb(56,189,248)" stroke="white" stroke-width="2" />
+      <circle cx="${bratislavaPoints[bratislavaPoints.length-1].x}" cy="${bratislavaPoints[bratislavaPoints.length-1].y}" r="8" fill="rgb(56,189,248)" opacity="0.3" />
+      <circle cx="${bratislavaPoints[bratislavaPoints.length-1].x}" cy="${bratislavaPoints[bratislavaPoints.length-1].y}" r="5" fill="rgb(56,189,248)" stroke="white" stroke-width="2" />
     ` : ''}
 
-    <!-- Legend -->
-    <circle cx="${x + 20}" cy="${y + height - 14}" r="5" fill="rgb(251,146,60)" />
-    <text x="${x + 30}" y="${y + height - 10}" fill="rgba(255,255,255,0.9)" font-size="11" font-family="Arial, sans-serif">Alicante ${currentAliTemp}°</text>
-    <circle cx="${x + 140}" cy="${y + height - 14}" r="5" fill="rgb(56,189,248)" />
-    <text x="${x + 150}" y="${y + height - 10}" fill="rgba(255,255,255,0.9)" font-size="11" font-family="Arial, sans-serif">Bratislava ${currentBraTemp}°</text>
+    <!-- Legend at bottom -->
+    <circle cx="${x + 25}" cy="${y + height - 16}" r="6" fill="rgb(251,146,60)" />
+    <text x="${x + 38}" y="${y + height - 12}" fill="rgba(255,255,255,0.9)" font-size="13" font-family="Arial, sans-serif">Alicante ${currentAliTemp}°C</text>
+    <circle cx="${x + 180}" cy="${y + height - 16}" r="6" fill="rgb(56,189,248)" />
+    <text x="${x + 193}" y="${y + height - 12}" fill="rgba(255,255,255,0.9)" font-size="13" font-family="Arial, sans-serif">Bratislava ${currentBraTemp}°C</text>
   `;
 }
 
@@ -599,16 +615,16 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date, 
     dayLengthLabel = dayLengthDiff > 0 ? 'Longer in Alicante' : dayLengthDiff < 0 ? 'Longer in Bratislava' : 'Same length';
   }
 
-  // Chart dimensions - wider for 7-day view
-  const chartWidth = 820;
-  const chartHeight = 230;
-  const chartX = 20;
-  const chartY = imageHeight + 20;
+  // Chart dimensions - very wide for 7-day view (takes most of bottom panel)
+  const chartWidth = 1000;
+  const chartHeight = 250;
+  const chartX = 15;
+  const chartY = imageHeight + 10;
 
   // Calendar gauge position - right side of bottom panel
-  const gaugeSize = 200;
-  const gaugeCx = canvasWidth - 140;
-  const gaugeCy = imageHeight + bottomPanelHeight / 2 + 10;
+  const gaugeSize = 220;
+  const gaugeCx = canvasWidth - 125;
+  const gaugeCy = imageHeight + bottomPanelHeight / 2;
 
   return `
     <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
@@ -653,19 +669,8 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date, 
       <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="${bottomPanelHeight}" fill="rgba(245,208,160,0.05)" />
       <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="2" fill="rgba(255,255,255,0.1)" />
 
-      <!-- 7-day Temperature chart (always shown) -->
-      ${generateTemperatureChartSVG(temperatureHistory, chartX, chartY, chartWidth, chartHeight)}
-
-      <!-- Difference indicators (compact, next to chart) -->
-      <rect x="${chartX + chartWidth + 15}" y="${chartY}" width="105" height="110" rx="10" fill="rgba(0,0,0,0.25)" />
-      <text x="${chartX + chartWidth + 67}" y="${chartY + 22}" fill="rgba(255,255,255,0.7)" font-size="10" text-anchor="middle" font-family="Arial, sans-serif">TEMP DIFF</text>
-      <text x="${chartX + chartWidth + 67}" y="${chartY + 55}" fill="${diffColor}" font-size="26" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°</text>
-      <text x="${chartX + chartWidth + 67}" y="${chartY + 75}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
-
-      <rect x="${chartX + chartWidth + 15}" y="${chartY + 120}" width="105" height="110" rx="10" fill="rgba(0,0,0,0.25)" />
-      <text x="${chartX + chartWidth + 67}" y="${chartY + 142}" fill="rgba(255,255,255,0.7)" font-size="10" text-anchor="middle" font-family="Arial, sans-serif">DAY LENGTH</text>
-      <text x="${chartX + chartWidth + 67}" y="${chartY + 175}" fill="${dayLengthColor}" font-size="22" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthDiffStr}</text>
-      <text x="${chartX + chartWidth + 67}" y="${chartY + 195}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthLabel}</text>
+      <!-- 7-day Temperature chart (wide, takes most of bottom panel) -->
+      ${generateTemperatureChartSVG(temperatureHistory, chartX, chartY, chartWidth, chartHeight, diff, diffSign, diffColor, diffLabel, dayLengthDiffStr, dayLengthColor, dayLengthLabel)}
 
       <!-- Calendar gauge (right side) -->
       ${generateCalendarGaugeSVG(gaugeCx, gaugeCy, date, gaugeSize)}
