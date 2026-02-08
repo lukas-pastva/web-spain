@@ -68,29 +68,20 @@ class ImageService {
     const tempDir = path.join(this.tempPath, `video-${date}-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
 
-    // Get current settings for overlay options
-    const settings = getOverlaySettings();
-
     const paths = [];
     for (const capture of captures) {
       const captureData = await db.getFullCaptureData(capture.id);
       if (captureData && captureData.imageData) {
         try {
-          // Fetch temperature history if chart is enabled
-          let temperatureHistory = null;
-          if (settings.showChart) {
-            temperatureHistory = await db.getTemperatureHistory(capture.id);
-          }
+          // Always fetch temperature history for the 7-day chart
+          const temperatureHistory = await db.getTemperatureHistory(capture.id);
 
           // Apply overlay to image before writing
           const overlayedImage = await applyOverlayToBuffer(
             captureData.imageData,
             captureData.weather,
             captureData.date,
-            {
-              showChart: settings.showChart,
-              temperatureHistory
-            }
+            { temperatureHistory }
           );
           const filePath = path.join(tempDir, `${capture.id}.jpg`);
           await fs.writeFile(filePath, overlayedImage);
@@ -120,29 +111,20 @@ class ImageService {
     const tempDir = path.join(this.tempPath, `daylight-${date}-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
 
-    // Get current settings for overlay options
-    const settings = getOverlaySettings();
-
     const paths = [];
     for (const capture of captures) {
       const captureData = await db.getFullCaptureData(capture.id);
       if (captureData && captureData.imageData) {
         try {
-          // Fetch temperature history if chart is enabled
-          let temperatureHistory = null;
-          if (settings.showChart) {
-            temperatureHistory = await db.getTemperatureHistory(capture.id);
-          }
+          // Always fetch temperature history for the 7-day chart
+          const temperatureHistory = await db.getTemperatureHistory(capture.id);
 
           // Apply overlay to image before writing
           const overlayedImage = await applyOverlayToBuffer(
             captureData.imageData,
             captureData.weather,
             captureData.date,
-            {
-              showChart: settings.showChart,
-              temperatureHistory
-            }
+            { temperatureHistory }
           );
           const filePath = path.join(tempDir, `${capture.id}.jpg`);
           await fs.writeFile(filePath, overlayedImage);
@@ -211,7 +193,7 @@ class ImageService {
   }
 
   /**
-   * Get temperature history for a capture (last 24 hours)
+   * Get temperature history for a capture (last 7 days)
    */
   async getTemperatureHistory(captureId) {
     return await db.getTemperatureHistory(captureId);

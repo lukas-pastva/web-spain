@@ -553,10 +553,9 @@ function generateCityPanelSVG(weather, x, y, panelWidth, panelHeight) {
  * @param {Object} options.bratislavaWeather - Bratislava weather data
  * @param {string} options.date - Date in YYYY-MM-DD format
  * @param {Array} options.temperatureHistory - Optional 7-day temperature history
- * @param {boolean} options.showChart - Whether to show the temperature chart
  * @returns {string} Complete SVG markup for info panels (not including image)
  */
-export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date, temperatureHistory = null, showChart = false }) {
+export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date, temperatureHistory = null }) {
   const canvasWidth = 1280;
   const canvasHeight = 720;
   const imageWidth = 800;
@@ -654,32 +653,19 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date, 
       <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="${bottomPanelHeight}" fill="rgba(245,208,160,0.05)" />
       <rect x="0" y="${imageHeight}" width="${canvasWidth}" height="2" fill="rgba(255,255,255,0.1)" />
 
-      <!-- 7-day Temperature chart (main feature, wider) -->
-      ${showChart && temperatureHistory ? generateTemperatureChartSVG(temperatureHistory, chartX, chartY, chartWidth, chartHeight) : `
-        <!-- Fallback: Temperature and Day Length difference boxes when chart is disabled -->
-        <rect x="20" y="${imageHeight + 20}" width="200" height="130" rx="12" fill="rgba(0,0,0,0.2)" />
-        <text x="120" y="${imageHeight + 48}" fill="rgba(255,255,255,0.7)" font-size="12" text-anchor="middle" font-family="Arial, sans-serif">TEMPERATURE</text>
-        <text x="120" y="${imageHeight + 95}" fill="${diffColor}" font-size="38" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°C</text>
-        <text x="120" y="${imageHeight + 125}" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
+      <!-- 7-day Temperature chart (always shown) -->
+      ${generateTemperatureChartSVG(temperatureHistory, chartX, chartY, chartWidth, chartHeight)}
 
-        <rect x="230" y="${imageHeight + 20}" width="200" height="130" rx="12" fill="rgba(0,0,0,0.2)" />
-        <text x="330" y="${imageHeight + 48}" fill="rgba(255,255,255,0.7)" font-size="12" text-anchor="middle" font-family="Arial, sans-serif">DAY LENGTH</text>
-        <text x="330" y="${imageHeight + 95}" fill="${dayLengthColor}" font-size="38" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthDiffStr}</text>
-        <text x="330" y="${imageHeight + 125}" fill="rgba(255,255,255,0.6)" font-size="11" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthLabel}</text>
-      `}
+      <!-- Difference indicators (compact, next to chart) -->
+      <rect x="${chartX + chartWidth + 15}" y="${chartY}" width="105" height="110" rx="10" fill="rgba(0,0,0,0.25)" />
+      <text x="${chartX + chartWidth + 67}" y="${chartY + 22}" fill="rgba(255,255,255,0.7)" font-size="10" text-anchor="middle" font-family="Arial, sans-serif">TEMP DIFF</text>
+      <text x="${chartX + chartWidth + 67}" y="${chartY + 55}" fill="${diffColor}" font-size="26" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°</text>
+      <text x="${chartX + chartWidth + 67}" y="${chartY + 75}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
 
-      <!-- Difference indicators (compact, next to chart when chart is shown) -->
-      ${showChart && temperatureHistory ? `
-        <rect x="${chartX + chartWidth + 15}" y="${chartY}" width="105" height="110" rx="10" fill="rgba(0,0,0,0.25)" />
-        <text x="${chartX + chartWidth + 67}" y="${chartY + 22}" fill="rgba(255,255,255,0.7)" font-size="10" text-anchor="middle" font-family="Arial, sans-serif">TEMP DIFF</text>
-        <text x="${chartX + chartWidth + 67}" y="${chartY + 55}" fill="${diffColor}" font-size="26" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${diffSign}${diff.toFixed(1)}°</text>
-        <text x="${chartX + chartWidth + 67}" y="${chartY + 75}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="middle" font-family="Arial, sans-serif">${diffLabel}</text>
-
-        <rect x="${chartX + chartWidth + 15}" y="${chartY + 120}" width="105" height="110" rx="10" fill="rgba(0,0,0,0.25)" />
-        <text x="${chartX + chartWidth + 67}" y="${chartY + 142}" fill="rgba(255,255,255,0.7)" font-size="10" text-anchor="middle" font-family="Arial, sans-serif">DAY LENGTH</text>
-        <text x="${chartX + chartWidth + 67}" y="${chartY + 175}" fill="${dayLengthColor}" font-size="22" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthDiffStr}</text>
-        <text x="${chartX + chartWidth + 67}" y="${chartY + 195}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthLabel}</text>
-      ` : ''}
+      <rect x="${chartX + chartWidth + 15}" y="${chartY + 120}" width="105" height="110" rx="10" fill="rgba(0,0,0,0.25)" />
+      <text x="${chartX + chartWidth + 67}" y="${chartY + 142}" fill="rgba(255,255,255,0.7)" font-size="10" text-anchor="middle" font-family="Arial, sans-serif">DAY LENGTH</text>
+      <text x="${chartX + chartWidth + 67}" y="${chartY + 175}" fill="${dayLengthColor}" font-size="22" font-weight="bold" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthDiffStr}</text>
+      <text x="${chartX + chartWidth + 67}" y="${chartY + 195}" fill="rgba(255,255,255,0.5)" font-size="9" text-anchor="middle" font-family="Arial, sans-serif">${dayLengthLabel}</text>
 
       <!-- Calendar gauge (right side) -->
       ${generateCalendarGaugeSVG(gaugeCx, gaugeCy, date, gaugeSize)}
@@ -696,8 +682,7 @@ export function generateHDLayoutSVG({ alicanteWeather, bratislavaWeather, date, 
  * @param {Object} weatherData.bratislava - Bratislava weather
  * @param {string} date - Date in YYYY-MM-DD format
  * @param {Object} options - Optional settings
- * @param {Array} options.temperatureHistory - 24h temperature history
- * @param {boolean} options.showChart - Whether to show temperature chart
+ * @param {Array} options.temperatureHistory - 7-day temperature history
  * @returns {Promise<Buffer>} Output image buffer (1280x720) with layout
  */
 export async function applyOverlayToBuffer(imageBuffer, weatherData, date, options = {}) {
@@ -726,8 +711,7 @@ export async function applyOverlayToBuffer(imageBuffer, weatherData, date, optio
     alicanteWeather,
     bratislavaWeather,
     date,
-    temperatureHistory: options.temperatureHistory || null,
-    showChart: options.showChart || false
+    temperatureHistory: options.temperatureHistory || null
   });
 
   const svgBuffer = Buffer.from(layoutSVG);
