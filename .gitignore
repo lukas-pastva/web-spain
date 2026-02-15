@@ -7,7 +7,7 @@ venv/
 *.egg-info/
 
 # Build outputs
-frontend/dist/
+**/dist/
 *.egg
 
 # Environment files
