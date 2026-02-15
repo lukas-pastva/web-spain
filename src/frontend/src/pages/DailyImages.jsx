@@ -197,7 +197,14 @@ function DailyImages() {
       </div>
 
       {loadingImages ? (
-        <div className="loading">Loading images...</div>
+        <div className="image-grid">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="skeleton-card">
+              <div className="skeleton skeleton-image" />
+              <div className="skeleton skeleton-text" style={{ width: '50%', marginTop: '0.75rem' }} />
+            </div>
+          ))}
+        </div>
       ) : images.length === 0 ? (
         <div className="empty-state">No images for this day.</div>
       ) : (

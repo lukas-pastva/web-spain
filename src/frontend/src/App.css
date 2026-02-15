@@ -1,102 +1,142 @@
 .app {
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .main-content {
   flex: 1;
-  padding: 2rem;
-  max-width: 1400px;
+  padding: var(--space-xl);
+  max-width: var(--content-max-width);
   margin: 0 auto;
   width: 100%;
+  margin-left: var(--sidebar-collapsed);
+  animation: fadeInUp 0.4s var(--ease-out);
 }
 
 .page-title {
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   font-weight: 600;
-  margin-bottom: 1.5rem;
-  color: #fff;
+  margin-bottom: var(--space-lg);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-sm);
+  letter-spacing: -0.02em;
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 12px;
-  padding: 1.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.card:hover {
+  border-color: var(--border-hover);
 }
 
 .loading {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3rem;
-  color: rgba(255, 255, 255, 0.7);
+  padding: var(--space-2xl);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
 }
 
 .error {
-  background: rgba(255, 100, 100, 0.2);
-  border: 1px solid rgba(255, 100, 100, 0.3);
-  border-radius: 8px;
-  padding: 1rem;
-  color: #ff8888;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  color: #fca5a5;
+  font-size: var(--text-sm);
 }
 
 .empty-state {
   text-align: center;
-  padding: 3rem;
-  color: rgba(255, 255, 255, 0.6);
+  padding: var(--space-2xl);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
 }
 
 .btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 500;
-  transition: transform 0.2s, box-shadow 0.2s;
+  padding: 0.6rem 1.4rem;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  transition: background var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
 }
 
 .btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
+  background: var(--surface-4);
+  border-color: var(--border-hover);
+  box-shadow: none;
 }
 
 .btn-danger {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  background: #dc2626;
+  color: var(--text-primary);
 }
 
 .btn-danger:hover {
-  box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+  background: #b91c1c;
+  box-shadow: 0 0 20px rgba(220, 38, 38, 0.25);
 }
 
 .btn.confirming {
-  background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+  background: #16a34a;
   animation: pulse-confirm 0.5s infinite;
 }
 
 @keyframes pulse-confirm {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+  .main-content {
+    margin-left: var(--sidebar-collapsed);
+    padding: var(--space-lg);
+  }
+}
+
+@media (max-width: 640px) {
+  .app {
+    flex-direction: column;
+  }
+
+  .main-content {
+    margin-left: 0;
+    padding: var(--space-md);
+    padding-bottom: calc(var(--bottombar-height) + var(--space-xl));
+  }
 }

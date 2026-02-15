@@ -39,7 +39,12 @@ function LatestImage() {
   }, []);
 
   if (loading) {
-    return <div className="loading">Loading latest image...</div>;
+    return (
+      <div className="latest-image-page">
+        <div className="skeleton skeleton-heading" />
+        <div className="skeleton skeleton-image" />
+      </div>
+    );
   }
 
   if (error) {
