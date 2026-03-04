@@ -1,4 +1,4 @@
-# Multi-stage build for web-spain application
+# Multi-stage build for web-arenales application
 
 # Stage 1: Build React frontend
 FROM node:20-alpine AS frontend-builder

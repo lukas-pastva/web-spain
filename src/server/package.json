@@ -1,7 +1,7 @@
 {
-  "name": "web-spain-server",
+  "name": "web-arenales-server",
   "version": "1.0.0",
-  "description": "Backend server for Web-Spain webcam timelapse application",
+  "description": "Backend server for Web-Arenales webcam timelapse application",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

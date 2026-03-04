@@ -6,8 +6,8 @@ import mysql from 'mysql2/promise';
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'webspain',
-  user: process.env.DB_USER || 'webspain',
+  database: process.env.DB_NAME || 'webarenales',
+  user: process.env.DB_USER || 'webarenales',
   password: process.env.DB_PASSWORD || '',
   charset: 'utf8mb4',
   waitForConnections: true,

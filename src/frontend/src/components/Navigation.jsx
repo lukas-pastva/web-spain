@@ -31,7 +31,7 @@ function Navigation() {
       <nav className="sidebar" aria-label="Main navigation">
         <div className="sidebar-brand">
           <div className="brand-mark">W</div>
-          <span className="sidebar-brand-text">Web Spain</span>
+          <span className="sidebar-brand-text">Web Arenales</span>
         </div>
         <ul className="sidebar-links">
           {navItems.map(({ path, label, icon }) => (

@@ -3,13 +3,13 @@ version: '3.8'
 services:
   mariadb:
     image: mariadb:10.11
-    container_name: web-spain-db
+    container_name: web-arenales-db
     restart: unless-stopped
     environment:
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-rootpassword}
-      - MYSQL_DATABASE=${DB_NAME:-webspain}
-      - MYSQL_USER=${DB_USER:-webspain}
-      - MYSQL_PASSWORD=${DB_PASSWORD:-webspainpassword}
+      - MYSQL_DATABASE=${DB_NAME:-webarenales}
+      - MYSQL_USER=${DB_USER:-webarenales}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-webarenalespassword}
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
@@ -19,11 +19,11 @@ services:
       retries: 5
       start_period: 30s
 
-  web-spain:
+  web-arenales:
     build:
       context: ./src
       dockerfile: Dockerfile
-    container_name: web-spain
+    container_name: web-arenales
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -35,9 +35,9 @@ services:
       - OUTPUT_DIR=/data
       - TARGET_URL=${TARGET_URL:-https://www.algarapictures.com/webcam}
       - DB_HOST=mariadb
-      - DB_NAME=${DB_NAME:-webspain}
-      - DB_USER=${DB_USER:-webspain}
-      - DB_PASSWORD=${DB_PASSWORD:-webspainpassword}
+      - DB_NAME=${DB_NAME:-webarenales}
+      - DB_USER=${DB_USER:-webarenales}
+      - DB_PASSWORD=${DB_PASSWORD:-webarenalespassword}
     depends_on:
       mariadb:
         condition: service_healthy

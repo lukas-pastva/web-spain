@@ -1,4 +1,4 @@
-# Web Spain - Alicante Webcam Time-lapse
+# Web Arenales - Alicante Webcam Time-lapse
 
 A full-stack application that captures screenshots from the Algarapictures webcam in Alicante, Spain, overlays weather information for both Alicante and Bratislava, and presents them through a React frontend with time-lapse video generation.
 
@@ -31,8 +31,8 @@ A full-stack application that captures screenshots from the Algarapictures webca
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/web-spain.git
-cd web-spain
+git clone https://github.com/yourusername/web-arenales.git
+cd web-arenales
 
 # Start the application
 docker-compose up -d
@@ -58,20 +58,20 @@ open http://localhost:3000
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: web-spain
+  name: web-arenales
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: web-spain
+      app: web-arenales
   template:
     metadata:
       labels:
-        app: web-spain
+        app: web-arenales
     spec:
       containers:
-      - name: web-spain
-        image: web-spain:latest
+      - name: web-arenales
+        image: web-arenales:latest
         ports:
         - containerPort: 3000
         env:
@@ -85,12 +85,12 @@ spec:
       volumes:
       - name: data
         persistentVolumeClaim:
-          claimName: web-spain-pvc
+          claimName: web-arenales-pvc
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: web-spain-pvc
+  name: web-arenales-pvc
 spec:
   accessModes:
     - ReadWriteOnce
@@ -101,10 +101,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: web-spain
+  name: web-arenales
 spec:
   selector:
-    app: web-spain
+    app: web-arenales
   ports:
   - port: 80
     targetPort: 3000

@@ -14,8 +14,8 @@ def get_db_config() -> Dict:
     """Get database configuration from environment variables."""
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),
-        'database': os.environ.get('DB_NAME', 'webspain'),
-        'user': os.environ.get('DB_USER', 'webspain'),
+        'database': os.environ.get('DB_NAME', 'webarenales'),
+        'user': os.environ.get('DB_USER', 'webarenales'),
         'password': os.environ.get('DB_PASSWORD', ''),
         'charset': 'utf8mb4',
         'collation': 'utf8mb4_unicode_ci'
