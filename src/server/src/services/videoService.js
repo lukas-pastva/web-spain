@@ -169,7 +169,11 @@ class VideoService {
     // Get sunrise/sunset times from database
     const sunTimes = await imageService.getSunTimesForDate(date);
     const sunriseTime = sunTimes.sunrise || '06:00';
-    const sunsetTime = sunTimes.sunset || '20:00';
+    // Subtract 20 minutes from sunset to account for camera low-light limitations
+    const rawSunset = sunTimes.sunset || '20:00';
+    const [sh, sm] = rawSunset.split(':').map(Number);
+    const sunsetMinutes = Math.max(0, sh * 60 + sm - 20);
+    const sunsetTime = `${String(Math.floor(sunsetMinutes / 60)).padStart(2, '0')}:${String(sunsetMinutes % 60).padStart(2, '0')}`;
 
     const imagePaths = await imageService.getDaylightImagePaths(date, sunriseTime, sunsetTime);
     if (imagePaths.length === 0) {

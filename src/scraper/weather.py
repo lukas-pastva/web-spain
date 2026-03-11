@@ -10,7 +10,7 @@ import os
 
 # City coordinates
 CITIES = {
-    'alicante': {'lat': 38.3452, 'lon': -0.4815, 'name': 'Alicante'},
+    'alicante': {'lat': 38.2652, 'lon': -0.5153, 'name': 'Arenales del Sol'},
     'bratislava': {'lat': 48.1486, 'lon': 17.1077, 'name': 'Bratislava'}
 }
 
