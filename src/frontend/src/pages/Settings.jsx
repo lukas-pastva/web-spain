@@ -3,7 +3,9 @@ import './Settings.css';
 
 function Settings() {
   const [settings, setSettings] = useState({
-    showChart: false
+    showChart: false,
+    sunriseOffsetMinutes: 0,
+    sunsetOffsetMinutes: -20
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,6 +59,34 @@ function Settings() {
     }
   };
 
+  const handleNumberChange = async (key, value) => {
+    const numValue = parseInt(value, 10) || 0;
+    const newSettings = { ...settings, [key]: numValue };
+    setSettings(newSettings);
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/api/images/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings)
+      });
+
+      if (response.ok) {
+        setMessage({ type: 'success', text: 'Settings saved!' });
+        setTimeout(() => setMessage(null), 2000);
+      } else {
+        throw new Error('Failed to save');
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save settings' });
+      setSettings({ ...settings });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading">Loading settings...</div>;
   }
@@ -90,6 +120,45 @@ function Settings() {
               />
               <span className="toggle-slider"></span>
             </label>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <h2 className="section-title">Daylight Video Offsets</h2>
+          <p className="section-description">
+            Adjust sunrise and sunset times used for daylight video generation to compensate for camera low-light limitations. Values are in minutes (negative = earlier, positive = later).
+          </p>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <span className="setting-label">Sunrise Offset (minutes)</span>
+              <span className="setting-description">
+                Shift the sunrise time for daylight videos. E.g. +20 starts capturing 20 minutes after sunrise.
+              </span>
+            </div>
+            <input
+              type="number"
+              className="setting-number-input"
+              value={settings.sunriseOffsetMinutes}
+              onChange={(e) => handleNumberChange('sunriseOffsetMinutes', e.target.value)}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="setting-item">
+            <div className="setting-info">
+              <span className="setting-label">Sunset Offset (minutes)</span>
+              <span className="setting-description">
+                Shift the sunset time for daylight videos. E.g. -20 stops capturing 20 minutes before sunset.
+              </span>
+            </div>
+            <input
+              type="number"
+              className="setting-number-input"
+              value={settings.sunsetOffsetMinutes}
+              onChange={(e) => handleNumberChange('sunsetOffsetMinutes', e.target.value)}
+              disabled={saving}
+            />
           </div>
         </div>
 

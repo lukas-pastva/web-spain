@@ -194,10 +194,11 @@ router.get('/settings', (req, res) => {
 // Update overlay settings
 router.put('/settings', express.json(), (req, res) => {
   try {
-    const { showChart } = req.body;
-    const updatedSettings = updateOverlaySettings({
-      showChart: Boolean(showChart)
-    });
+    const { showChart, sunriseOffsetMinutes, sunsetOffsetMinutes } = req.body;
+    const update = { showChart: Boolean(showChart) };
+    if (sunriseOffsetMinutes !== undefined) update.sunriseOffsetMinutes = Number(sunriseOffsetMinutes) || 0;
+    if (sunsetOffsetMinutes !== undefined) update.sunsetOffsetMinutes = Number(sunsetOffsetMinutes) || 0;
+    const updatedSettings = updateOverlaySettings(update);
     res.json(updatedSettings);
   } catch (error) {
     console.error('Error updating settings:', error);

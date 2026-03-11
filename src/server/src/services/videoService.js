@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { generateDailyVideo, generateCombinedVideo } from '../utils/ffmpeg.js';
-import { imageService } from './imageService.js';
+import { imageService, getOverlaySettings } from './imageService.js';
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR || '/data';
 
@@ -166,13 +166,18 @@ class VideoService {
   }
 
   async generateDaylightVideo(date) {
-    // Get sunrise/sunset times from database
+    // Get sunrise/sunset times from database and apply offsets from settings
     const sunTimes = await imageService.getSunTimesForDate(date);
-    const sunriseTime = sunTimes.sunrise || '06:00';
-    // Subtract 20 minutes from sunset to account for camera low-light limitations
+    const settings = getOverlaySettings();
+
+    const rawSunrise = sunTimes.sunrise || '06:00';
+    const [rh, rm] = rawSunrise.split(':').map(Number);
+    const sunriseMinutes = Math.max(0, Math.min(1439, rh * 60 + rm + (settings.sunriseOffsetMinutes || 0)));
+    const sunriseTime = `${String(Math.floor(sunriseMinutes / 60)).padStart(2, '0')}:${String(sunriseMinutes % 60).padStart(2, '0')}`;
+
     const rawSunset = sunTimes.sunset || '20:00';
     const [sh, sm] = rawSunset.split(':').map(Number);
-    const sunsetMinutes = Math.max(0, sh * 60 + sm - 20);
+    const sunsetMinutes = Math.max(0, Math.min(1439, sh * 60 + sm + (settings.sunsetOffsetMinutes || 0)));
     const sunsetTime = `${String(Math.floor(sunsetMinutes / 60)).padStart(2, '0')}:${String(sunsetMinutes % 60).padStart(2, '0')}`;
 
     const imagePaths = await imageService.getDaylightImagePaths(date, sunriseTime, sunsetTime);

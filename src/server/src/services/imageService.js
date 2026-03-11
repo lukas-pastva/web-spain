@@ -5,7 +5,9 @@ import { applyOverlayToBuffer } from '../utils/imageOverlay.js';
 
 // In-memory settings store (can be extended to use file/db persistence)
 let overlaySettings = {
-  showChart: false
+  showChart: false,
+  sunriseOffsetMinutes: 0,
+  sunsetOffsetMinutes: -20
 };
 
 export function getOverlaySettings() {

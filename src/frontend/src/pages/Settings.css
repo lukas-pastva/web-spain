@@ -64,6 +64,31 @@
   line-height: 1.5;
 }
 
+/* Number Input */
+.setting-number-input {
+  width: 80px;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: center;
+  flex-shrink: 0;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.setting-number-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.setting-number-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Toggle Switch */
 .toggle-switch {
   position: relative;
